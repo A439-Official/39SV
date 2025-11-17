@@ -27,6 +27,7 @@ vars = {
     blatext = "",
     lessframetime = false,
     framedist = 2439,
+    endteleport = true,
     minignoringdistance = 2,
     compatibilitymode = false,
     usebezierdistance = true,
@@ -193,6 +194,7 @@ function draw()
             imgui.SetNextItemWidth(150)
             _, vars.framedist = imgui.InputInt("Frame Distance", vars.framedist, 1, 100)
             _, vars.lessframetime = imgui.Checkbox("Less Frame Time", vars.lessframetime)
+            _, vars.endteleport = imgui.Checkbox("End Teleport", vars.endteleport)
             imgui.Text("Animation Parameters:")
             -- imgui.SetNextItemWidth(350)
             _, vars.blatext = imgui.InputTextMultiline("##BLAArgs", vars.blatext, 10000, {225, 225})
@@ -244,7 +246,7 @@ function EditSV()
         svs = join_tables(svs, asvs)
     elseif vars.editSVmode == 2 then
         local atps, arsvs, asvs = barlineanim(math.floor(vars.starttime), math.floor(vars.stoptime), vars.blacount,
-            vars.framedist, vars.lessframetime, vars.blatext)
+            vars.framedist, vars.lessframetime, vars.blatext, vars.endteleport)
         rsvs = join_tables(rsvs, arsvs)
         svs = join_tables(svs, asvs)
         tps = join_tables(tps, atps)
@@ -300,8 +302,8 @@ end
 function displaceview(starttime, stoptime, distance)
     local times = {}
     for _, note in ipairs(map["HitObjects"]) do
-        if note.StartTime >= starttime and note.StartTime <= stoptime and state.SelectedScrollGroupId ==
-            note.TimingGroup and not_has(times, note.StartTime) then
+        if note.StartTime > starttime and note.StartTime < stoptime and state.SelectedScrollGroupId == note.TimingGroup and
+            not_has(times, note.StartTime) then
             table.insert(times, note.StartTime)
         end
     end
@@ -310,14 +312,9 @@ function displaceview(starttime, stoptime, distance)
     local arsvs, asvs = teleport(starttime, distance, 0)
     rsvs = join_tables(rsvs, arsvs)
     svs = join_tables(svs, asvs)
-    for _, time in ipairs(times) do
-        local arsvs, asvs = teleport(time, -distance, 1)
-        rsvs = join_tables(rsvs, arsvs)
-        svs = join_tables(svs, asvs)
-        local arsvs, asvs = teleport(time, distance, 0)
-        rsvs = join_tables(rsvs, arsvs)
-        svs = join_tables(svs, asvs)
-    end
+    local arsvs, asvs = displacenote(starttime, stoptime, -distance, times)
+    rsvs = join_tables(rsvs, arsvs)
+    svs = join_tables(svs, asvs)
     local arsvs, asvs = teleport(stoptime, -distance, 1)
     rsvs = join_tables(rsvs, arsvs)
     svs = join_tables(svs, asvs)
@@ -436,7 +433,7 @@ function autodelete()
     return svs, rsvs, rtps
 end
 
-function barlineanim(starttime, stoptime, count, stepdistance)
+function barlineanim(starttime, stoptime, count, stepdistance, endteleport)
     local animdelay = 1
     local animspacing = 1 + vars.baseoffset * 2 ^ 1
     local lines = {}
@@ -550,7 +547,9 @@ function barlineanim(starttime, stoptime, count, stepdistance)
     ::b::
     table.insert(svs, utils.CreateScrollVelocity(stoptime, SPEED(stoptime)))
     table.insert(lines, utils.CreateTimingPoint(stoptime, BPM(stoptime)))
-    table.insert(svs, utils.CreateScrollVelocity(stoptime - vars.baseoffset, stepdistance / vars.baseoffset))
+    if endteleport then
+        table.insert(svs, utils.CreateScrollVelocity(stoptime - vars.baseoffset, stepdistance / vars.baseoffset))
+    end
     return lines, rsvs, svs
 end
 
