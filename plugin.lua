@@ -382,10 +382,7 @@ function vibrato(starttime, stoptime, vibdist, vibtext)
     for _, time in ipairs(times) do
         local vibdistance = arg_parse(lines[_ % #lines + 1][1], (lasttime - starttime) / (stoptime - starttime))
         if math.abs(vibdistance) > vars.minignoringdistance then
-            local arsvs, asvs = teleport(lasttime, vibdistance, 0)
-            rsvs = join_tables(rsvs, arsvs)
-            svs = join_tables(svs, asvs)
-            local arsvs, asvs = teleport(time, -vibdistance, 1)
+            local arsvs, asvs = displaceview(lasttime, time, vibdistance)
             rsvs = join_tables(rsvs, arsvs)
             svs = join_tables(svs, asvs)
         end
@@ -681,6 +678,9 @@ function AddSVs()
         return
     end
     local svl = {}
+    if vars.addssf then
+        table.insert(svl, utils.CreateScrollVelocity(vars.starttime - vars.baseoffset, 1))
+    end
     local lines = {}
     for line in vars.advancedtext:gmatch("[^\r\n]+") do
         local args = {}
@@ -709,6 +709,9 @@ function AddSVs()
         table.insert(svl, utils.CreateScrollVelocity(t, s))
     end
     if not vars.skipfinalSV then
+        if vars.addssf then
+            table.insert(svl, utils.CreateScrollVelocity(vars.stoptime - vars.baseoffset, vars.stop))
+        end
         if vars.finalSVmode == 0 then
             table.insert(svl, utils.CreateScrollVelocity(vars.stoptime, 1))
         elseif vars.finalSVmode == 1 then
