@@ -256,9 +256,11 @@ function EditSV()
         svs = join_tables(svs, asvs)
         rtps = join_tables(rtps, artps)
     elseif vars.editSVmode == 4 then
-        local arsvs, asvs = vibrato(math.floor(vars.starttime), math.floor(vars.stoptime), vars.vibdist, vars.vibtext)
+        local arsvs, asvs, assf = vibrato(math.floor(vars.starttime), math.floor(vars.stoptime), vars.vibdist,
+            vars.vibtext)
         rsvs = join_tables(rsvs, arsvs)
         svs = join_tables(svs, asvs)
+        ssf = join_tables(ssf, assf)
     elseif vars.editSVmode == 5 then
         local times = {}
         for _, note in ipairs(state.SelectedHitObjects) do
@@ -338,6 +340,7 @@ end
 function vibrato(starttime, stoptime, vibdist, vibtext)
     local svs = {}
     local rsvs = {}
+    local ssf = {}
 
     local times = {}
     local bpm = nil
@@ -379,17 +382,29 @@ function vibrato(starttime, stoptime, vibdist, vibtext)
     end
 
     local lasttime = starttime
+    local lastssf = SSF(starttime)
     for _, time in ipairs(times) do
-        local vibdistance = arg_parse(lines[_ % #lines + 1][1], (lasttime - starttime) / (stoptime - starttime))
-        if math.abs(vibdistance) > vars.minignoringdistance then
-            local arsvs, asvs = displaceview(lasttime, time, vibdistance)
+        local svvibdistance = arg_parse(lines[_ % #lines + 1][1], (lasttime - starttime) / (stoptime - starttime))
+        local ssfvibdistance = SSF(lasttime)
+        if #lines[_ % #lines + 1] > 1 then
+            ssfvibdistance = arg_parse(lines[_ % #lines + 1][2], (lasttime - starttime) / (stoptime - starttime))
+        end
+        if math.abs(svvibdistance) > vars.minignoringdistance then
+            local arsvs, asvs = displaceview(lasttime, time, svvibdistance)
             rsvs = join_tables(rsvs, arsvs)
             svs = join_tables(svs, asvs)
         end
+        if math.abs(ssfvibdistance - lastssf) > 0.001 then
+            table.insert(ssf, utils.CreateScrollSpeedFactor(lasttime, ssfvibdistance))
+            table.insert(ssf, utils.CreateScrollSpeedFactor(time, ssfvibdistance))
+        end
         lasttime = time
+        lastssf = ssfvibdistance
     end
-
-    return rsvs, svs
+    if #ssf > 0 then
+        table.insert(ssf, utils.CreateScrollSpeedFactor(stoptime, SSF(stoptime)))
+    end
+    return rsvs, svs, ssf
 end
 
 function autodelete()
@@ -542,7 +557,7 @@ function barlineanim(starttime, stoptime, count, stepdistance, endteleport)
         end
     end
     ::b::
-    table.insert(svs, utils.CreateScrollVelocity(stoptime, SPEED(stoptime)))
+    table.insert(svs, utils.CreateScrollVelocity(stoptime, SV(stoptime)))
     table.insert(lines, utils.CreateTimingPoint(stoptime, BPM(stoptime)))
     if endteleport then
         table.insert(svs, utils.CreateScrollVelocity(stoptime - vars.baseoffset, stepdistance / vars.baseoffset))
@@ -559,7 +574,7 @@ function teleport(t, d, m)
             end
         end
         table.insert(svs, utils.CreateScrollVelocity(t, (d + DISTANCE(t, t + vars.baseoffset)) / vars.baseoffset))
-        table.insert(svs, utils.CreateScrollVelocity(t + vars.baseoffset, SPEED(t + vars.baseoffset)))
+        table.insert(svs, utils.CreateScrollVelocity(t + vars.baseoffset, SV(t + vars.baseoffset)))
     else
         for _, sv in ipairs(map.ScrollVelocities) do
             if sv.StartTime >= t - vars.baseoffset and sv.StartTime < t then
@@ -568,7 +583,7 @@ function teleport(t, d, m)
         end
         table.insert(svs, utils.CreateScrollVelocity(t - vars.baseoffset,
             (d + DISTANCE(t - vars.baseoffset, t)) / vars.baseoffset))
-        table.insert(svs, utils.CreateScrollVelocity(t, SPEED(t)))
+        table.insert(svs, utils.CreateScrollVelocity(t, SV(t)))
     end
     return rsvs, svs
 end
@@ -742,7 +757,7 @@ function BPM(t)
     end
     return lb or map.TimingPoints[1].Bpm
 end
-function SPEED(t)
+function SV(t)
     local s = 1
     for _, sv in ipairs(map.ScrollVelocities) do
         if sv.StartTime <= t then
@@ -752,6 +767,23 @@ function SPEED(t)
         end
     end
     return s
+end
+function SSF(t)
+    if #map.ScrollSpeedFactors == 0 then
+        return 1
+    end
+    if t <= map.ScrollSpeedFactors[1].StartTime then
+        return 1
+    end
+    for i = 1, #map.ScrollSpeedFactors - 1 do
+        local current = map.ScrollSpeedFactors[i]
+        local next = map.ScrollSpeedFactors[i + 1]
+        if t >= current.StartTime and t <= next.StartTime then
+            local ratio = (t - current.StartTime) / (next.StartTime - current.StartTime)
+            return current.Multiplier + (next.Multiplier - current.Multiplier) * ratio
+        end
+    end
+    return map.ScrollSpeedFactors[#map.ScrollSpeedFactors].Multiplier
 end
 function DISTANCE(t1, t2)
     local reverse = false
@@ -837,17 +869,17 @@ function arg_parse(a, p)
     elseif as[1] == "2" then
         if p < 0.5 then
             return tonumber(as[2]) + (tonumber(as[3]) - tonumber(as[2])) *
-                       BS(2 * p, tonumber(as[4]), tonumber(as[5]), tonumber(as[6]), tonumber(as[7]))
+                       BS(2 * p, tonumber(as[4]), tonumber(as[5]), tonumber(as[6]), tonumber(as[7])) * 0.5
         else
             return tonumber(as[2]) + (tonumber(as[3]) - tonumber(as[2])) *
-                       BS(2 - 2 * p, tonumber(as[4]), tonumber(as[5]), tonumber(as[6]), tonumber(as[7]))
+                       BS(2 - 2 * p, tonumber(as[4]), tonumber(as[5]), tonumber(as[6]), tonumber(as[7])) * 0.5
         end
     elseif as[1] == "3" then
         if p < 0.5 then
-            return tonumber(as[2]) + (tonumber(as[3]) - tonumber(as[2])) *
+            return tonumber(as[3]) - (tonumber(as[3]) - tonumber(as[2])) *
                        BS(2 * p, tonumber(as[4]), tonumber(as[5]), tonumber(as[6]), tonumber(as[7])) * 0.5
         else
-            return tonumber(as[3]) - (tonumber(as[3]) - tonumber(as[2])) *
+            return tonumber(as[2]) + (tonumber(as[3]) - tonumber(as[2])) *
                        BS(2 - 2 * p, tonumber(as[4]), tonumber(as[5]), tonumber(as[6]), tonumber(as[7])) * 0.5
         end
     end
