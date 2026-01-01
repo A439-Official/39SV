@@ -260,7 +260,7 @@ function EditSV()
         end
     elseif vars.editSVmode == 2 then
         local atps, arsvs, asvs = barlineanim(math.floor(vars.starttime), math.floor(vars.stoptime), vars.blacount,
-            vars.framedist, vars.lessframetime, vars.blatext, vars.endteleport)
+            vars.framedist, vars.endteleport)
         rsvs = join_tables(rsvs, arsvs)
         svs = join_tables(svs, asvs)
         tps = join_tables(tps, atps)
@@ -482,7 +482,7 @@ function barlineanim(starttime, stoptime, count, stepdistance, endteleport)
     for ii = 1, count do
         local i = ii
         local time = lastframe
-        if lessframetime then
+        if vars.lessframetime then
             i = (lastframe - starttime) / (stoptime - starttime) * count
         else
             i = i - 1
@@ -568,7 +568,7 @@ function barlineanim(starttime, stoptime, count, stepdistance, endteleport)
             table.insert(svs, utils.CreateScrollVelocity(lastframe, speed * -1))
             table.insert(svs, utils.CreateScrollVelocity(lastframe - vars.baseoffset, speed))
             table.insert(svs, utils.CreateScrollVelocity(lastframe + vars.baseoffset, 0))
-            if lastframe > stoptime then
+            if lastframe > stoptime - vars.baseoffset then
                 goto b
             end
         end
