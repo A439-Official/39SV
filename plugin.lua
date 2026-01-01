@@ -11,9 +11,8 @@ vars = {
     x2 = 1,
     y2 = 1,
     advancedtext = "",
-    skipfinalSV = false,
     finalSV = 0,
-    finalSVmode = 0,
+    finalSVmode = 1,
     editSVmode = 0,
     base = 1,
     baseoffset = 2 ^ -5,
@@ -28,7 +27,7 @@ vars = {
     lessframetime = false,
     framedist = 2439,
     endteleport = true,
-    minignoringdistance = 2,
+    minignoringdistance = 8,
     compatibilitymode = false,
     usebezierdistance = true,
     bezierdistance = 1,
@@ -147,12 +146,11 @@ function draw()
         imgui.PopStyleColor()
         imgui.SetNextItemWidth(100)
         _, vars.creatSVcount = imgui.InputInt("SV Count", vars.creatSVcount, 8, 10)
-        _, vars.skipfinalSV = imgui.Checkbox("Skip Final SV", vars.skipfinalSV)
         if not vars.skipfinalSV then
             imgui.SetNextItemWidth(120)
             _, vars.finalSVmode = imgui.Combo("Final SV Type", vars.finalSVmode,
-                {"Default (1x)", "Normal (Stop Value)", "Custom"}, 3)
-            if vars.finalSVmode == 2 then
+                {"Skip", "Default (1x)", "Normal (Stop Value)", "Custom"}, 4)
+            if vars.finalSVmode == 3 then
                 imgui.SetNextItemWidth(100)
                 _, vars.finalSV = imgui.InputFloat("Final SV Value", vars.finalSV, 0.5, 1)
             end
@@ -241,9 +239,25 @@ function EditSV()
             svs = join_tables(svs, asvs)
         end
     elseif vars.editSVmode == 1 then
-        local arsvs, asvs = teleport(vars.starttime, vars.teleportdistance, vars.teleportmode)
-        rsvs = join_tables(rsvs, arsvs)
-        svs = join_tables(svs, asvs)
+        if #state.SelectedHitObjects > 0 then
+            local times = {}
+            for _, note in ipairs(state.SelectedHitObjects) do
+                if not_has(times, note.StartTime) then
+                    table.insert(times, note.StartTime)
+                end
+            end
+            table.sort(times)
+            for i = 1, #times do
+                local time = times[i]
+                local arsvs, asvs = teleport(time, vars.teleportdistance, vars.teleportmode)
+                rsvs = join_tables(rsvs, arsvs)
+                svs = join_tables(svs, asvs)
+            end
+        else
+            local arsvs, asvs = teleport(vars.starttime, vars.teleportdistance, vars.teleportmode)
+            rsvs = join_tables(rsvs, arsvs)
+            svs = join_tables(svs, asvs)
+        end
     elseif vars.editSVmode == 2 then
         local atps, arsvs, asvs = barlineanim(math.floor(vars.starttime), math.floor(vars.stoptime), vars.blacount,
             vars.framedist, vars.lessframetime, vars.blatext, vars.endteleport)
@@ -394,7 +408,10 @@ function vibrato(starttime, stoptime, vibdist, vibtext)
             rsvs = join_tables(rsvs, arsvs)
             svs = join_tables(svs, asvs)
         end
-        if math.abs(ssfvibdistance - lastssf) > 0.001 then
+        if math.abs(ssfvibdistance - lastssf) > 0 then
+            if #ssf == 0 then
+                table.insert(ssf, utils.CreateScrollSpeedFactor(starttime, SSF(starttime)))
+            end
             table.insert(ssf, utils.CreateScrollSpeedFactor(lasttime, ssfvibdistance))
             table.insert(ssf, utils.CreateScrollSpeedFactor(time, ssfvibdistance))
         end
@@ -689,61 +706,115 @@ function style()
 end
 
 function AddSVs()
-    if vars.starttime >= vars.stoptime or vars.creatSVcount == 0 then
-        return
+    local rsvs, svs, rtps, tps, rssf, ssf = {}, {}, {}, {}, {}, {}
+
+    if #state.SelectedHitObjects > 1 then
+        local times = {}
+        for _, note in ipairs(state.SelectedHitObjects) do
+            if not_has(times, note.StartTime) then
+                table.insert(times, note.StartTime)
+            end
+        end
+        table.sort(times)
+        for i = 1, #times - 1 do
+            local t1, t2 = times[i], times[i + 1]
+            local asvs, assf = beziersv(t1, t2, vars.creatSVcount, vars.start, vars.stop, vars.x1, vars.y1, vars.x2,
+                vars.y2, vars.creatSVmode, vars.usebezierdistance, vars.addssf,
+                switch(i < #times - 1, 0, vars.finalSVmode), vars.finalSV, vars.bezierdistance, vars.advancedtext)
+            svs = join_tables(svs, asvs)
+            ssf = join_tables(ssf, assf)
+        end
+    else
+        local asvs, assf = beziersv(vars.starttime, vars.stoptime, vars.creatSVcount, vars.start, vars.stop, vars.x1,
+            vars.y1, vars.x2, vars.y2, vars.creatSVmode, vars.usebezierdistance, vars.addssf, vars.finalSVmode,
+            vars.finalSV, vars.bezierdistance, vars.advancedtext)
+        svs = join_tables(svs, asvs)
+        ssf = join_tables(ssf, assf)
     end
-    local svl = {}
-    if vars.addssf then
-        table.insert(svl, utils.CreateScrollVelocity(vars.starttime - vars.baseoffset, 1))
+
+    local batchActions = {}
+    if #rsvs > 0 then
+        table.insert(batchActions, utils.CreateEditorAction(action_type.RemoveScrollVelocityBatch, rsvs))
+    end
+    if #svs > 0 then
+        table.insert(batchActions, utils.CreateEditorAction(action_type.AddScrollVelocityBatch, svs))
+    end
+    if #rtps > 0 then
+        table.insert(batchActions, utils.CreateEditorAction(action_type.RemoveTimingPointBatch, rtps))
+    end
+    if #tps > 0 then
+        table.insert(batchActions, utils.CreateEditorAction(action_type.AddTimingPointBatch, tps))
+    end
+    if #rssf > 0 then
+        table.insert(batchActions, utils.CreateEditorAction(action_type.RemoveScrollSpeedFactorBatch, rssf))
+    end
+    if #ssf > 0 then
+        table.insert(batchActions, utils.CreateEditorAction(action_type.AddScrollSpeedFactorBatch, ssf))
+    end
+    if #batchActions > 0 then
+        actions.PerformBatch(batchActions)
+    end
+end
+
+function beziersv(starttime, endtime, count, start, stop, x1, y1, x2, y2, mode, ubd, ssfmode, fmode, finalSV, bscale, at)
+    local svs, ssfs = {}, {}
+    if starttime >= endtime or count == 0 then
+        return {}, {}
+    end
+    if ssfmode then
+        table.insert(ssfs, utils.CreateScrollSpeedFactor(starttime - vars.baseoffset, 1))
     end
     local lines = {}
-    for line in vars.advancedtext:gmatch("[^\r\n]+") do
+    for line in at:gmatch("[^\r\n]+") do
         local args = {}
         for arg in line:gmatch("%S+") do
             table.insert(args, arg)
         end
         table.insert(lines, args)
     end
-    for i = 0, vars.creatSVcount - 1 do
-        local t = select_time(vars.starttime + (i / vars.creatSVcount) * (vars.stoptime - vars.starttime))
+    for i = 0, count - 1 do
+        local t = select_time(starttime + (i / count) * (endtime - starttime))
         local s = 1
-        if vars.creatSVmode == 0 or vars.creatSVmode == 1 then
-            s = vars.start + (BS((i + 0.5) / vars.creatSVcount, vars.x1, vars.y1, vars.x2, vars.y2)) *
-                    (vars.stop - vars.start)
-            if vars.usebezierdistance and vars.creatSVmode == 1 then
-                s = (BS((i + 1) / vars.creatSVcount, vars.x1, vars.y1, vars.x2, vars.y2) -
-                        BS(i / vars.creatSVcount, vars.x1, vars.y1, vars.x2, vars.y2)) * vars.creatSVcount *
-                        vars.bezierdistance
+        if mode == 0 or mode == 1 then
+            s = start + (BS((i + 0.5) / count, x1, y1, x2, y2)) * (stop - start)
+            if ubd and mode == 1 then
+                s = (BS((i + 1) / count, x1, y1, x2, y2) - BS(i / count, x1, y1, x2, y2)) * count * bscale
             end
-        elseif vars.creatSVmode == 2 then
-            s =
-                (arg_parse(lines[1][1], (i + 1) / vars.creatSVcount) - arg_parse(lines[1][1], (i) / vars.creatSVcount)) *
-                    vars.creatSVcount
+        elseif mode == 2 then
+            if ssfmode then
+                s = arg_parse(lines[1][1], (i) / count)
+            else
+                s = (arg_parse(lines[1][1], (i + 1) / count) - arg_parse(lines[1][1], (i) / count)) * count
+            end
         end
 
-        table.insert(svl, utils.CreateScrollVelocity(t, s))
-    end
-    if not vars.skipfinalSV then
-        if vars.addssf then
-            table.insert(svl, utils.CreateScrollVelocity(vars.stoptime - vars.baseoffset, vars.stop))
-        end
-        if vars.finalSVmode == 0 then
-            table.insert(svl, utils.CreateScrollVelocity(vars.stoptime, 1))
-        elseif vars.finalSVmode == 1 then
-            table.insert(svl, utils.CreateScrollVelocity(vars.stoptime, vars.stop))
-        elseif vars.finalSVmode == 2 then
-            table.insert(svl, utils.CreateScrollVelocity(vars.stoptime, vars.finalSV))
+        if ssfmode then
+            table.insert(ssfs, utils.CreateScrollSpeedFactor(t, s))
+        else
+            table.insert(svs, utils.CreateScrollVelocity(t, s))
         end
     end
-    if vars.addssf then
-        local ssf = {}
-        for _, sv in ipairs(svl) do
-            table.insert(ssf, utils.CreateScrollSpeedFactor(sv.StartTime, sv.Multiplier))
+    if fmode > 0 then
+        if ssfmode then
+            table.insert(ssfs, utils.CreateScrollSpeedFactor(endtime - vars.baseoffset, stop))
+            if fmode == 1 then
+                table.insert(ssfs, utils.CreateScrollSpeedFactor(endtime, 1))
+            elseif fmode == 2 then
+                table.insert(ssfs, utils.CreateScrollSpeedFactor(endtime, stop))
+            elseif fmode == 3 then
+                table.insert(ssfs, utils.CreateScrollSpeedFactor(endtime, finalSV))
+            end
+        else
+            if fmode == 1 then
+                table.insert(svs, utils.CreateScrollVelocity(endtime, 1))
+            elseif fmode == 2 then
+                table.insert(svs, utils.CreateScrollVelocity(endtime, stop))
+            elseif fmode == 3 then
+                table.insert(svs, utils.CreateScrollVelocity(endtime, finalSV))
+            end
         end
-        actions.PerformBatch({utils.CreateEditorAction(action_type.AddScrollSpeedFactorBatch, ssf)})
-    else
-        actions.PlaceScrollVelocityBatch(svl)
     end
+    return svs, ssfs
 end
 
 function BPM(t)
@@ -890,6 +961,11 @@ function select_time(t)
             return h.StartTime
         end
     end
+    for _, h in ipairs(map.HitObjects) do
+        if math.abs(h.EndTime - t) < 1 then
+            return h.EndTime
+        end
+    end
     return t
 end
 function GETVARS(n, v)
@@ -912,4 +988,11 @@ function join_tables(t1, t2)
         table.insert(result, v)
     end
     return result
+end
+function switch(x, a, b)
+    if x then
+        return a
+    else
+        return b
+    end
 end
