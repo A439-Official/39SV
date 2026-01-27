@@ -234,9 +234,24 @@ function EditSV()
                 end
             end
         else
-            local arsvs, asvs = keep(vars.starttime, vars.stoptime, vars.basescale, vars.base)
-            rsvs = join_tables(rsvs, arsvs)
-            svs = join_tables(svs, asvs)
+            if #state.SelectedHitObjects > 0 then
+                local times = {}
+                for _, note in ipairs(state.SelectedHitObjects) do
+                    if not_has(times, note.StartTime) then
+                        table.insert(times, note.StartTime)
+                    end
+                end
+                table.sort(times)
+                for i = 1, #times - 1 do
+                    local arsvs, asvs = keep(times[i], times[i + 1], vars.basescale, vars.base)
+                    rsvs = join_tables(rsvs, arsvs)
+                    svs = join_tables(svs, asvs)
+                end
+            else
+                local arsvs, asvs = keep(vars.starttime, vars.stoptime, vars.basescale, vars.base)
+                rsvs = join_tables(rsvs, arsvs)
+                svs = join_tables(svs, asvs)
+            end
         end
     elseif vars.editSVmode == 1 then
         if #state.SelectedHitObjects > 0 then
@@ -318,8 +333,8 @@ end
 function displaceview(starttime, stoptime, distance)
     local times = {}
     for _, note in ipairs(map["HitObjects"]) do
-        if note.StartTime > starttime and note.StartTime < stoptime and state.SelectedScrollGroupId == note.TimingGroup and
-            not_has(times, note.StartTime) then
+        if note.StartTime > starttime + vars.baseoffset and note.StartTime < stoptime - vars.baseoffset and
+            state.SelectedScrollGroupId == note.TimingGroup and not_has(times, note.StartTime) then
             table.insert(times, note.StartTime)
         end
     end
@@ -377,10 +392,10 @@ function vibrato(starttime, stoptime, vibdist, vibtext)
     end
 
     local time = bpm["StartTime"]
-    while time <= starttime + 1 do
+    while time <= starttime + vars.baseoffset do
         time = time + 60000 / bpm["Bpm"] / vibdist
     end
-    while time < stoptime - 1 do
+    while time < stoptime - vars.baseoffset do
         table.insert(times, select_time(time))
         time = time + 60000 / bpm["Bpm"] / vibdist
     end
@@ -398,13 +413,21 @@ function vibrato(starttime, stoptime, vibdist, vibtext)
     local lasttime = starttime
     local lastssf = SSF(starttime)
     for _, time in ipairs(times) do
-        local svvibdistance = arg_parse(lines[_ % #lines + 1][1], (lasttime - starttime) / (stoptime - starttime))
+        local svvibdistance = arg_parse(lines[(_ + 1) % #lines + 1][1], (lasttime - starttime) / (stoptime - starttime))
         local ssfvibdistance = SSF(lasttime)
+        local svscale = 1
         if #lines[_ % #lines + 1] > 1 then
-            ssfvibdistance = arg_parse(lines[_ % #lines + 1][2], (lasttime - starttime) / (stoptime - starttime))
+            svscale = arg_parse(lines[(_ + 1) % #lines + 1][2], (lasttime - starttime) / (stoptime - starttime))
+            if #lines[_ % #lines + 1] > 2 then
+                ssfvibdistance = arg_parse(lines[(_ + 1) % #lines + 1][3],
+                    (lasttime - starttime) / (stoptime - starttime))
+            end
         end
-        if math.abs(svvibdistance) > vars.minignoringdistance then
-            local arsvs, asvs = displaceview(lasttime, time, svvibdistance)
+        if math.abs(svvibdistance) > vars.minignoringdistance / 4 then
+            local arsvs, asvs = displaceview(lasttime, time, svvibdistance * svscale)
+            -- if _ ~= 1 then
+            --     table.remove(asvs, #asvs)
+            -- end
             rsvs = join_tables(rsvs, arsvs)
             svs = join_tables(svs, asvs)
         end
@@ -617,6 +640,14 @@ function keep(starttime, endtime, basescale, base)
                          (hitobject["StartTime"] - (starttime + (endtime - starttime) * base)) * basescale
             if math.abs(offset) > vars.minignoringdistance then
                 table.insert(hitobjects, {hitobject["StartTime"], offset})
+            end
+        end
+        if hitobject["EndTime"] > starttime and hitobject["EndTime"] < endtime and state.SelectedScrollGroupId ==
+            hitobject.TimingGroup and not_has(hitobjects, hitobject) then
+            offset = DISTANCE(starttime + (endtime - starttime) * base, hitobject["EndTime"]) -
+                         (hitobject["EndTime"] - (starttime + (endtime - starttime) * base)) * basescale
+            if math.abs(offset) > vars.minignoringdistance then
+                table.insert(hitobjects, {hitobject["EndTime"], offset})
             end
         end
     end
@@ -939,10 +970,10 @@ function arg_parse(a, p)
                    BS(p, tonumber(as[4]), tonumber(as[5]), tonumber(as[6]), tonumber(as[7]))
     elseif as[1] == "2" then
         if p < 0.5 then
-            return tonumber(as[2]) + (tonumber(as[3]) - tonumber(as[2])) *
+            return tonumber(as[2]) + (tonumber(as[3]) - tonumber(as[2])) * 2 *
                        BS(2 * p, tonumber(as[4]), tonumber(as[5]), tonumber(as[6]), tonumber(as[7])) * 0.5
         else
-            return tonumber(as[2]) + (tonumber(as[3]) - tonumber(as[2])) *
+            return tonumber(as[2]) + (tonumber(as[3]) - tonumber(as[2])) * 2 *
                        BS(2 - 2 * p, tonumber(as[4]), tonumber(as[5]), tonumber(as[6]), tonumber(as[7])) * 0.5
         end
     elseif as[1] == "3" then
@@ -952,6 +983,14 @@ function arg_parse(a, p)
         else
             return tonumber(as[2]) + (tonumber(as[3]) - tonumber(as[2])) *
                        BS(2 - 2 * p, tonumber(as[4]), tonumber(as[5]), tonumber(as[6]), tonumber(as[7])) * 0.5
+        end
+    elseif as[1] == "s" then
+        for i = 1, tonumber(as[2]) do
+            local st = tonumber(1 / as[2] * (i - 1))
+            local et = tonumber(1 / as[2] * i)
+            if p >= st and p < et then
+                return arg_parse(table.concat(as, ",", 3), (p - st) / (et - st))
+            end
         end
     end
 end
@@ -981,12 +1020,34 @@ end
 
 function join_tables(t1, t2)
     local result = {}
+    local time_index = {}
+
+    -- 处理第一个表
     for i, v in ipairs(t1) do
-        table.insert(result, v)
+        if type(v) == "userdata" and v.StartTime then
+            time_index[v.StartTime] = #result + 1
+            table.insert(result, v)
+        else
+            table.insert(result, v)
+        end
     end
+
+    -- 处理第二个表
     for i, v in ipairs(t2) do
-        table.insert(result, v)
+        if type(v) == "userdata" and v.StartTime then
+            if time_index[v.StartTime] then
+                -- 如果有相同的time，替换现有的项
+                result[time_index[v.StartTime]] = v
+            else
+                -- 如果没有相同的time，添加新项
+                time_index[v.StartTime] = #result + 1
+                table.insert(result, v)
+            end
+        else
+            table.insert(result, v)
+        end
     end
+
     return result
 end
 function switch(x, a, b)
@@ -995,4 +1056,17 @@ function switch(x, a, b)
     else
         return b
     end
+end
+function diff(array1, array2)
+    local result = {}
+    local lookup = {}
+    for i = 1, #array2 do
+        lookup[array2[i]] = true
+    end
+    for i = 1, #array1 do
+        if not lookup[array1[i]] then
+            table.insert(result, array1[i])
+        end
+    end
+    return result
 end
