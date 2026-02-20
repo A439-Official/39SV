@@ -34,7 +34,8 @@ vars = {
     vibtext = "",
     vibdist = 16,
     initstyle = false,
-    displacedistance = 0
+    displacedistance = 0,
+    copiedSVs = {}
 }
 
 function draw()
@@ -165,9 +166,9 @@ function draw()
         imgui.Text("SV Editing Tools")
         imgui.PopStyleColor()
         imgui.SetNextItemWidth(150)
-        _, vars.editSVmode = imgui.Combo("Edit Mode", vars.editSVmode, {"Keep Position", "Teleport", "Bar Line Anim",
-                                                                        "Auto Delete", "Vibrato", "Displace Note",
-                                                                        "Displace View", "Reset SVs"}, 8)
+        _, vars.editSVmode = imgui.Combo("Edit Mode", vars.editSVmode,
+            {"Keep Position", "Teleport", "Bar Line Anim", "Auto Delete", "Vibrato", "Displace Note", "Displace View",
+             "Reset SVs", "Copy/Paste SVs"}, 9)
         imgui.Spacing()
         if vars.editSVmode == 0 then
             if imgui.Button("Current Scale##Scale") and vars.stoptime > vars.starttime then
@@ -208,7 +209,13 @@ function draw()
         elseif vars.editSVmode == 7 then
             imgui.Text("Warning: Do not use this unless you know exactly what you are doing.")
             imgui.TextDisabled("I won't tell you anything.")
+        elseif vars.editSVmode == 8 then
+            imgui.Text("Copied SVs: " .. tostring(#vars.copiedSVs))
+            if imgui.Button("Copy SVs", 100, 30) then
+                local count = copySVs()
+            end
         end
+
         imgui.Spacing()
         if imgui.Button("Apply Edit", 120, 30) then
             EditSV()
@@ -311,6 +318,9 @@ function EditSV()
         local arsvs, asvs = reset(vars.starttime, vars.stoptime)
         rsvs = join_tables(rsvs, arsvs)
         svs = join_tables(svs, asvs)
+    elseif vars.editSVmode == 8 then
+        local asvs = pasteSVs()
+        svs = join_tables(svs, asvs)
     end
 
     local batchActions = {}
@@ -335,6 +345,34 @@ function EditSV()
     if #batchActions > 0 then
         actions.PerformBatch(batchActions)
     end
+end
+
+function copySVs()
+    vars.copiedSVs = {}
+    local count = 0
+    for _, sv in ipairs(map.ScrollVelocities) do
+        if sv.StartTime >= vars.starttime and sv.StartTime < vars.stoptime then
+            table.insert(vars.copiedSVs, {
+                time = sv.StartTime - vars.starttime,
+                multiplier = sv.Multiplier
+            })
+            count = count + 1
+        elseif sv.StartTime >= vars.stoptime then
+            break
+        end
+    end
+    return count
+end
+function pasteSVs()
+    if #vars.copiedSVs == 0 then
+        return {}
+    end
+    local svs = {}
+    for _, cached in ipairs(vars.copiedSVs) do
+        local newTime = vars.starttime + cached.time
+        table.insert(svs, utils.CreateScrollVelocity(newTime, cached.multiplier))
+    end
+    return svs
 end
 
 function reset(starttime, stoptime)
