@@ -5,7 +5,7 @@ vars = {
     start = 0,
     stop = 1,
     creatSVmode = 0,
-    creatSVcount = 16,
+    creatSVcount = 24,
     x1 = 0,
     y1 = 0,
     x2 = 1,
@@ -167,7 +167,7 @@ function draw()
         imgui.SetNextItemWidth(150)
         _, vars.editSVmode = imgui.Combo("Edit Mode", vars.editSVmode, {"Keep Position", "Teleport", "Bar Line Anim",
                                                                         "Auto Delete", "Vibrato", "Displace Note",
-                                                                        "Displace View"}, 7)
+                                                                        "Displace View", "Reset SVs"}, 8)
         imgui.Spacing()
         if vars.editSVmode == 0 then
             if imgui.Button("Current Scale##Scale") and vars.stoptime > vars.starttime then
@@ -205,6 +205,9 @@ function draw()
         elseif vars.editSVmode == 5 or vars.editSVmode == 6 then
             imgui.SetNextItemWidth(150)
             _, vars.displacedistance = imgui.InputInt("Distance", vars.displacedistance, 1, 10)
+        elseif vars.editSVmode == 7 then
+            imgui.Text("Warning: Do not use this unless you know exactly what you are doing.")
+            imgui.TextDisabled("I won't tell you anything.")
         end
         imgui.Spacing()
         if imgui.Button("Apply Edit", 120, 30) then
@@ -289,7 +292,7 @@ function EditSV()
             vars.vibtext)
         rsvs = join_tables(rsvs, arsvs)
         svs = join_tables(svs, asvs)
-        ssf = join_tables(ssf, assf)
+        ssf = join_tables(ssf, assf, false)
     elseif vars.editSVmode == 5 then
         local times = {}
         for _, note in ipairs(state.SelectedHitObjects) do
@@ -302,6 +305,10 @@ function EditSV()
     elseif vars.editSVmode == 6 then
         local arsvs, asvs = displaceview(math.floor(vars.starttime), math.floor(vars.stoptime), vars.displacedistance,
             times)
+        rsvs = join_tables(rsvs, arsvs)
+        svs = join_tables(svs, asvs)
+    elseif vars.editSVmode == 7 then
+        local arsvs, asvs = reset(vars.starttime, vars.stoptime)
         rsvs = join_tables(rsvs, arsvs)
         svs = join_tables(svs, asvs)
     end
@@ -328,6 +335,27 @@ function EditSV()
     if #batchActions > 0 then
         actions.PerformBatch(batchActions)
     end
+end
+
+function reset(starttime, stoptime)
+    local rsvs, svs = {}, {}
+    local times = {}
+    for _, note in ipairs(map["HitObjects"]) do
+        if note.StartTime > starttime and note.StartTime < stoptime and not_has(times, note.StartTime) then
+            table.insert(times, note.StartTime)
+        end
+    end
+
+    for _, time in ipairs(times) do
+        local arsvs, asvs = teleport(time, 0, 1)
+        rsvs = join_tables(rsvs, arsvs)
+        svs = join_tables(svs, asvs)
+        local arsvs, asvs = teleport(time, 0, 0)
+        rsvs = join_tables(rsvs, arsvs)
+        svs = join_tables(svs, asvs)
+    end
+
+    return rsvs, svs
 end
 
 function displaceview(starttime, stoptime, distance)
@@ -415,19 +443,11 @@ function vibrato(starttime, stoptime, vibdist, vibtext)
     for _, time in ipairs(times) do
         local svvibdistance = arg_parse(lines[(_ + 1) % #lines + 1][1], (lasttime - starttime) / (stoptime - starttime))
         local ssfvibdistance = SSF(lasttime)
-        local svscale = 1
         if #lines[_ % #lines + 1] > 1 then
-            svscale = arg_parse(lines[(_ + 1) % #lines + 1][2], (lasttime - starttime) / (stoptime - starttime))
-            if #lines[_ % #lines + 1] > 2 then
-                ssfvibdistance = arg_parse(lines[(_ + 1) % #lines + 1][3],
-                    (lasttime - starttime) / (stoptime - starttime))
-            end
+            ssfvibdistance = arg_parse(lines[(_ + 1) % #lines + 1][2], (lasttime - starttime) / (stoptime - starttime))
         end
         if math.abs(svvibdistance) > vars.minignoringdistance / 4 then
-            local arsvs, asvs = displaceview(lasttime, time, svvibdistance * svscale)
-            -- if _ ~= 1 then
-            --     table.remove(asvs, #asvs)
-            -- end
+            local arsvs, asvs = displaceview(lasttime, time, svvibdistance)
             rsvs = join_tables(rsvs, arsvs)
             svs = join_tables(svs, asvs)
         end
@@ -534,14 +554,16 @@ function barlineanim(starttime, stoptime, count, stepdistance, endteleport)
                 local lasttime = starttime
                 for _, hitobject in ipairs(hitobjects) do
                     if hitobject < time then
-                        table.insert(times, (hitobject - starttime) * tonumber(barline[2]))
+                        local offset = barline[4] and tonumber(barline[4]) or 0
+                        table.insert(times, (hitobject - starttime) * tonumber(barline[2]) + offset)
                     elseif lasttime < time then
                         local a = (time - lasttime)
                         if barline[3] then
                             ls = split(barline[3], ",")
                             a = (hitobject - lasttime) * BS(a / (hitobject - lasttime), ls[1], ls[2], ls[3], ls[4])
                         end
-                        table.insert(times, (lasttime - starttime + a) * tonumber(barline[2]))
+                        local offset = barline[4] and tonumber(barline[4]) or 0
+                        table.insert(times, (lasttime - starttime + a) * tonumber(barline[2]) + offset)
                     end
                     lasttime = hitobject
                 end
@@ -561,7 +583,8 @@ function barlineanim(starttime, stoptime, count, stepdistance, endteleport)
                 local lasttime = starttime
                 for _, hitobject in ipairs(hitobjects) do
                     if hitobject > time then
-                        table.insert(times, (hitobject - starttime) * tonumber(barline[2]))
+                        local offset = barline[4] and tonumber(barline[4]) or 0
+                        table.insert(times, (hitobject - starttime) * tonumber(barline[2]) + offset)
                     elseif lasttime > time then
                         local a = (time - lasttime)
                         if barline[3] then
@@ -569,7 +592,8 @@ function barlineanim(starttime, stoptime, count, stepdistance, endteleport)
                             a = (hitobject - lasttime) *
                                     (1 - BS(1 - a / (hitobject - lasttime), ls[1], ls[2], ls[3], ls[4]))
                         end
-                        table.insert(times, (lasttime - starttime + a) * tonumber(barline[2]))
+                        local offset = barline[4] and tonumber(barline[4]) or 0
+                        table.insert(times, (lasttime - starttime + a) * tonumber(barline[2]) + offset)
                     end
                     lasttime = hitobject
                 end
@@ -1018,36 +1042,41 @@ function SAVEVARS(n, v)
     end
 end
 
-function join_tables(t1, t2)
+function join_tables(t1, t2, deduplicate)
+    if deduplicate == nil then
+        deduplicate = true
+    end
     local result = {}
     local time_index = {}
-
-    -- 处理第一个表
-    for i, v in ipairs(t1) do
-        if type(v) == "userdata" and v.StartTime then
-            time_index[v.StartTime] = #result + 1
-            table.insert(result, v)
-        else
-            table.insert(result, v)
-        end
-    end
-
-    -- 处理第二个表
-    for i, v in ipairs(t2) do
-        if type(v) == "userdata" and v.StartTime then
-            if time_index[v.StartTime] then
-                -- 如果有相同的time，替换现有的项
-                result[time_index[v.StartTime]] = v
-            else
-                -- 如果没有相同的time，添加新项
+    if deduplicate then
+        for i, v in ipairs(t1) do
+            if type(v) == "userdata" and v.StartTime then
                 time_index[v.StartTime] = #result + 1
                 table.insert(result, v)
+            else
+                table.insert(result, v)
             end
-        else
+        end
+        for i, v in ipairs(t2) do
+            if type(v) == "userdata" and v.StartTime then
+                if time_index[v.StartTime] then
+                    result[time_index[v.StartTime]] = v
+                else
+                    time_index[v.StartTime] = #result + 1
+                    table.insert(result, v)
+                end
+            else
+                table.insert(result, v)
+            end
+        end
+    else
+        for i, v in ipairs(t1) do
+            table.insert(result, v)
+        end
+        for i, v in ipairs(t2) do
             table.insert(result, v)
         end
     end
-
     return result
 end
 function switch(x, a, b)
