@@ -1,7 +1,7 @@
 function ui_edit_displacenote()
     imgui.SetNextItemWidth(ui.width)
     _, vars.displaceDistance = imgui.InputInt("##DisplaceDistance", vars.displaceDistance, 1, 10)
-    tooltip("Displace distance")
+    tooltip("ui_edit_displace_distance")
 
     imgui.Separator()
 

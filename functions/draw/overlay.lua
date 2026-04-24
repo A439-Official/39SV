@@ -31,4 +31,5 @@ function draw_overlay()
         ex = 0.25 + 0.5 * bezier(launchTime % 1.5 / 1.5, 0.75, 0, 1, 1)
         drawLine(drawlist, wx + ww * sx, wy + wh * 0.75, wx + ww * ex, wy + wh * 0.75, rgbaToUint(57, 197, 187, 255), 5)
     end
+
 end

@@ -1,7 +1,7 @@
 function ui_edit_vibrato()
     imgui.SetNextItemWidth(ui.width)
     _, vars.vibDist = imgui.InputInt("Vibrato Distance", vars.vibDist, 8, 10)
-    tooltip("Distance between vibrato points")
+    tooltip("ui_edit_vibrato_distance")
 
     imgui.Separator()
 
@@ -14,14 +14,14 @@ function ui_edit_vibrato()
         if _ then
             item.sv = newParam
         end
-        tooltip("SV")
+        tooltip("ui_edit_vibrato_sv")
         imgui.SameLine()
         imgui.SetNextItemWidth((ui.width - 32 - ui.spacing * 2) / 2)
         local _, newParam = imgui.InputText("##Param_" .. idx .. "_ssf", item.ssf, 32)
         if _ then
             item.ssf = newParam
         end
-        tooltip("SFF")
+        tooltip("ui_edit_vibrato_sff")
 
         imgui.SameLine()
 
@@ -105,7 +105,7 @@ function vibrato(starttime, stoptime, vibdist, vibItems)
             (lasttime - starttime) / (stoptime - starttime))
         local ssfvibdistance = paramNumber(vibItems[(_ + 1) % #vibItems + 1].ssf,
             (lasttime - starttime) / (stoptime - starttime))
-        if math.abs(svvibdistance) > vars.minIgnoringDistance then
+        if math.abs(svvibdistance) > 1 then
             local arsvs, asvs = displaceview(lasttime, time, svvibdistance)
             rsvs = join_tables(rsvs, arsvs)
             svs = join_tables(svs, asvs)

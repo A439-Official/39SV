@@ -2,14 +2,14 @@ function ui_edit_lineanim()
 
     imgui.SetNextItemWidth(ui.width)
     _, vars.frameCount = imgui.InputInt("##FrameCount", vars.frameCount, 8, 10)
-    tooltip("The number of frames in the animation")
+    tooltip("ui_edit_lineanim_count")
 
     imgui.SetNextItemWidth(ui.width)
-    _, vars.frameDistance = imgui.InputInt("##FrameDistance", vars.frameDistance, 100, 100)
-    tooltip("The distance between each frame")
+    _, vars.frameDistance = imgui.InputText("##FrameDistance", vars.frameDistance, 32)
+    tooltip("ui_edit_lineanim_distance")
 
-    _, vars.saveFrameTime = imgui.Checkbox("Save Frame Time", vars.saveFrameTime)
-    tooltip("If enabled, the animation will run at the maximum frame rate")
+    _, vars.maxFrame = imgui.Checkbox("Max Frame", vars.maxFrame)
+    tooltip("ui_edit_lineanim_max_frame")
 
     _, vars.teleportAtEnd = imgui.Checkbox("End Teleport", vars.teleportAtEnd)
 
@@ -59,70 +59,70 @@ function ui_edit_lineanim()
         if item.type == "line" then
             imgui.SetNextItemWidth(ui.width)
             local _, newParam = imgui.InputText("##Param_" .. idx .. "_1", item.params[1], 32)
-            tooltip("The line's position")
+            tooltip("ui_edit_lineanim_line_position")
             if _ then
                 item.params[1] = newParam
             end
         elseif item.type == "lines" then
             imgui.SetNextItemWidth((ui.width - ui.spacing * 1.5) / 3)
             local _, newParam = imgui.InputText("##Param_" .. idx .. "_1", item.params[1], 32)
-            tooltip("Number of lines to draw")
+            tooltip("ui_edit_lineanim_lines_count")
             if _ then
                 item.params[1] = newParam
             end
             imgui.SameLine()
             imgui.SetNextItemWidth((ui.width - ui.spacing * 1.5) / 3)
             local _, newParam = imgui.InputText("##Param_" .. idx .. "_2", item.params[2], 32)
-            tooltip("Start position")
+            tooltip("ui_edit_lineanim_lines_start")
             if _ then
                 item.params[2] = newParam
             end
             imgui.SameLine()
             imgui.SetNextItemWidth((ui.width - ui.spacing * 1.5) / 3)
             local _, newParam = imgui.InputText("##Param_" .. idx .. "_3", item.params[3], 32)
-            tooltip("End position")
+            tooltip("ui_edit_lineanim_lines_end")
             if _ then
                 item.params[3] = newParam
             end
         elseif item.type == "random" then
             imgui.SetNextItemWidth((ui.width - ui.spacing * 1.5) / 3)
             local _, newParam = imgui.InputText("##Param_" .. idx .. "_1", item.params[1], 32)
-            tooltip("Number of random lines")
+            tooltip("ui_edit_lineanim_random_count")
             if _ then
                 item.params[1] = newParam
             end
             imgui.SameLine()
             imgui.SetNextItemWidth((ui.width - ui.spacing * 1.5) / 3)
             local _, newParam = imgui.InputText("##Param_" .. idx .. "_2", item.params[2], 32)
-            tooltip("Minimum position")
+            tooltip("ui_edit_lineanim_random_min")
             if _ then
                 item.params[2] = newParam
             end
             imgui.SameLine()
             imgui.SetNextItemWidth((ui.width - ui.spacing * 1.5) / 3)
             local _, newParam = imgui.InputText("##Param_" .. idx .. "_3", item.params[3], 32)
-            tooltip("Maximum position")
+            tooltip("ui_edit_lineanim_random_max")
             if _ then
                 item.params[3] = newParam
             end
         elseif item.type == "note" then
             imgui.SetNextItemWidth((ui.width - ui.spacing * 1.5) / 3)
             local _, a = imgui.Combo("##InOut_" .. idx, item.params[1], {"In", "Out"}, 2)
-            tooltip("In (from start) or Out (from end)")
+            tooltip("ui_edit_lineanim_note_direction")
             if _ then
                 item.params[1] = a
             end
             imgui.SameLine()
             imgui.SetNextItemWidth((ui.width - ui.spacing * 1.5) / 3)
             local _, newBez = imgui.InputText("##Bez_" .. idx, item.params[2], 32)
-            tooltip("Bezier easing curve")
+            tooltip("ui_edit_lineanim_note_easing")
             if _ then
                 item.params[2] = newBez
             end
             imgui.SameLine()
             imgui.SetNextItemWidth((ui.width - ui.spacing * 1.5) / 3)
             local _, newScale = imgui.InputText("##Scale_" .. idx, item.params[3], 32)
-            tooltip("Scale factor")
+            tooltip("ui_edit_lineanim_note_scale")
             if _ then
                 item.params[3] = newScale
             end
@@ -143,7 +143,7 @@ function ui_edit_lineanim()
 
     if button("Apply") then
         local tps, rsvs, svs = lineanim(math.floor(vars.startTime), math.floor(vars.stopTime), vars.frameCount,
-            vars.frameDistance, vars.teleportAtEnd, vars.saveFrameTime)
+            vars.frameDistance, vars.teleportAtEnd, vars.maxFrame)
 
         local batchActions = {}
         if #rsvs > 0 then
@@ -155,6 +155,12 @@ function ui_edit_lineanim()
         if #tps > 0 then
             table.insert(batchActions, utils.CreateEditorAction(action_type.AddTimingPointBatch, tps))
         end
+        local ts = {}
+        for _, item in ipairs(vars.lineAnimItems) do
+            table.insert(ts, item.type .. ": " .. table.concat(item.params, "  "))
+        end
+        local bookmark = utils.CreateBookmark(math.floor(vars.startTime), table.concat(ts, " || "))
+        table.insert(batchActions, utils.CreateEditorAction(action_type.AddBookmark, bookmark))
         if #batchActions > 0 then
             actions.PerformBatch(batchActions)
         end
@@ -180,7 +186,7 @@ function lineanim(starttime, stoptime, count, stepdistance, endteleport, saveFra
             time = animdistance * i + starttime
             lastframe = time
         end
-        table.insert(svs, utils.CreateScrollVelocity(time, stepdistance / vars.offset))
+        table.insert(svs, utils.CreateScrollVelocity(time, paramNumber(stepdistance, i / count) / vars.offset))
         table.insert(svs, utils.CreateScrollVelocity(time + vars.offset, 0))
         time = time + vars.offset * 1
         lastframe = lastframe + vars.offset * 1
@@ -262,7 +268,7 @@ function lineanim(starttime, stoptime, count, stepdistance, endteleport, saveFra
     table.insert(svs, utils.CreateScrollVelocity(stoptime, get_sv(stoptime)))
     table.insert(lines, utils.CreateTimingPoint(stoptime, get_bpm(stoptime)))
     if endteleport then
-        table.insert(svs, utils.CreateScrollVelocity(stoptime - vars.offset, stepdistance / vars.offset))
+        table.insert(svs, utils.CreateScrollVelocity(stoptime - vars.offset, 10000 / vars.offset))
     end
     return lines, rsvs, svs
 end

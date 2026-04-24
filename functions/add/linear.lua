@@ -1,5 +1,5 @@
 function ui_add_linear()
-    setValue()
+    ui_value()
 
     imgui.Separator()
 

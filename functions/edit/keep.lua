@@ -1,7 +1,7 @@
 function ui_edit_keep()
     imgui.SetNextItemWidth(ui.width)
     _, vars.keepScale = imgui.InputFloat("##BaseScale", vars.keepScale, 0.25, 0.5)
-    tooltip("Scale SVs to range")
+    tooltip("ui_edit_keep_scale")
 
     if button("Current", 64) and vars.stopTime > vars.startTime then
         vars.keepScale = ((state.SelectedHitObjects[1] and state.SelectedHitObjects[1].StartTime or state.SongTime) -
@@ -9,8 +9,8 @@ function ui_edit_keep()
     end
     imgui.SameLine()
     imgui.SetNextItemWidth(ui.width - 64 - ui.spacing)
-    _, vars.keepBaseTime = imgui.InputFloat("##BaseTime", vars.keepBaseTime, 0.5, 1)
-    tooltip("Base time for SVs")
+    _, vars.keepBase = imgui.InputFloat("##Base", vars.keepBase, 0.5, 1)
+    tooltip("ui_edit_keep_base")
 
     imgui.Separator()
 
@@ -26,12 +26,12 @@ function ui_edit_keep()
             end
             table.sort(times)
             for i = 1, #times - 1 do
-                local arsvs, asvs = keep(times[i], times[i + 1], vars.keepScale, vars.keepBaseTime)
+                local arsvs, asvs = keep(times[i], times[i + 1], vars.keepScale, vars.keepBase)
                 rsvs = join_tables(rsvs, arsvs)
                 svs = join_tables(svs, asvs)
             end
         else
-            local arsvs, asvs = keep(vars.startTime, vars.stopTime, vars.keepScale, vars.keepBaseTime)
+            local arsvs, asvs = keep(vars.startTime, vars.stopTime, vars.keepScale, vars.keepBase)
             rsvs = join_tables(rsvs, arsvs)
             svs = join_tables(svs, asvs)
         end

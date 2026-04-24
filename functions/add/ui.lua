@@ -6,11 +6,11 @@ function ui_add()
 
     imgui.SetNextItemWidth(ui.width)
     _, vars.creatSVCount = imgui.InputInt("##CreatSVCount", vars.creatSVCount, 8, 10)
-    tooltip("Number of SVs")
+    tooltip("ui_add_count")
 
     imgui.SetNextItemWidth(ui.width)
     _, vars.finalSVMode = imgui.Combo("##FinalSVMode", vars.finalSVMode, {"Skip", "Default", "Normal", "Custom"}, 4)
-    tooltip("Final SV mode")
+    tooltip("ui_add_final")
     if vars.finalSVMode == 3 then
         imgui.SetNextItemWidth(ui.width)
         _, vars.finalSV = imgui.InputFloat("##FinalSVValue", vars.finalSV, 0.5, 1)

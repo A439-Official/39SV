@@ -2,11 +2,11 @@ function ui_edit_teleport()
 
     imgui.SetNextItemWidth(ui.width)
     _, vars.teleportMode = imgui.Combo("##TeleportMode", vars.teleportMode, {"Below", "Above"}, 2)
-    tooltip("Teleport position of selected notes")
+    tooltip("ui_edit_teleport_mode")
 
     imgui.SetNextItemWidth(ui.width)
     _, vars.teleportDistance = imgui.InputFloat("##Distance", vars.teleportDistance, 1, 100)
-    tooltip("Teleport distance")
+    tooltip("ui_edit_teleport_distance")
 
     imgui.Separator()
 

@@ -1,10 +1,17 @@
 function ui_edit_scale()
     imgui.SetNextItemWidth(ui.width)
     _, vars.scaleFactor = imgui.InputFloat("##ScaleFactor", vars.scaleFactor, 0.1, 1.0)
-    tooltip("Scale factor")
+    tooltip("ui_edit_scale_scale")
 
     if button("Apply") then
-        local rsvs, svs, ssf = scale(math.floor(vars.startTime), math.floor(vars.stopTime), vars.scaleFactor)
+        local rsvs, svs = {}, {}
+
+        if #state.SelectedHitObjects > 1 then
+            rsvs, svs = scale(math.floor(state.SelectedHitObjects[1].startTime),
+                math.floor(state.SelectedHitObjects[#state.SelectedHitObjects].startTime), vars.scaleFactor)
+        else
+            rsvs, svs = scale(math.floor(vars.startTime), math.floor(vars.stopTime), vars.scaleFactor)
+        end
 
         local batchActions = {}
         if #rsvs > 0 then
@@ -12,9 +19,6 @@ function ui_edit_scale()
         end
         if #svs > 0 then
             table.insert(batchActions, utils.CreateEditorAction(action_type.AddScrollVelocityBatch, svs))
-        end
-        if #ssf > 0 then
-            table.insert(batchActions, utils.CreateEditorAction(action_type.AddScrollSpeedFactorBatch, ssf))
         end
         if #batchActions > 0 then
             actions.PerformBatch(batchActions)
@@ -25,7 +29,6 @@ end
 function scale(starttime, stoptime, scaleFactor)
     local rsvs = {}
     local svs = {}
-    local ssf = {}
 
     for _, sv in ipairs(map.ScrollVelocities) do
         if sv.StartTime >= starttime and sv.StartTime < stoptime then
@@ -58,5 +61,5 @@ function scale(starttime, stoptime, scaleFactor)
         table.insert(svs, utils.CreateScrollVelocity(stoptime, stopMultiplier))
     end
 
-    return rsvs, svs, ssf
+    return rsvs, svs
 end
