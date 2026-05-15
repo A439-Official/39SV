@@ -34,6 +34,9 @@ function displaceview(starttime, stoptime, distance)
             state.SelectedScrollGroupId == note.TimingGroup and not_has(times, note.StartTime) then
             table.insert(times, note.StartTime)
         end
+        if note.StartTime >= stoptime - vars.offset then
+            break
+        end
     end
     local rsvs = {}
     local svs = {}

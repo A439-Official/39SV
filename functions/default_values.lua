@@ -35,5 +35,6 @@ vars = {
     vibDist = 16,
     displaceDistance = 0,
     scaleFactor = 1,
-    copiedSVs = {}
+    copiedSVs = {},
+    cacheSVDists = {}
 }

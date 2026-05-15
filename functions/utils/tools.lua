@@ -96,3 +96,26 @@ function min(t)
     return min_v
 end
 
+function binary_search(array, value, key)
+    if #array == 0 then
+        return nil
+    end
+
+    local low = 1
+    local high = #array
+    local result = nil
+
+    while low <= high do
+        local mid = math.floor((low + high) / 2)
+        local current = key and array[mid][key] or array[mid]
+
+        if current <= value then
+            result = mid
+            low = mid + 1
+        else
+            high = mid - 1
+        end
+    end
+
+    return result
+end

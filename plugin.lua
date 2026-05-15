@@ -1,4 +1,4 @@
-version = "26.04.24+005826"
+version = "26.05.15+150211"
 
 -- =======================================
 -- logo.png
@@ -376,14 +376,28 @@ vars = {
     vibDist = 16,
     displaceDistance = 0,
     scaleFactor = 1,
-    copiedSVs = {}
+    copiedSVs = {},
+    cacheSVDists = {}
 }
+
+-- =======================================
+-- listener.lua
+-- =======================================
+
+function listener_handler()
+end
+
+function Awake()
+    listen(listener_handler)
+end
+
 
 -- =======================================
 -- main.lua
 -- =======================================
 
 function draw()
+
     style()
     get_vars("39SV_", vars)
     if not vars.init then
@@ -391,6 +405,8 @@ function draw()
     end
 
     ui_main()
+
+    vars.cacheSVDists = {}
 
     save_vars("39SV_", vars)
 end
@@ -1110,6 +1126,9 @@ function displaceview(starttime, stoptime, distance)
             state.SelectedScrollGroupId == note.TimingGroup and not_has(times, note.StartTime) then
             table.insert(times, note.StartTime)
         end
+        if note.StartTime >= stoptime - vars.offset then
+            break
+        end
     end
     local rsvs = {}
     local svs = {}
@@ -1136,8 +1155,8 @@ function ui_edit_keep()
     tooltip("ui_edit_keep_scale")
 
     if button("Current", 64) and vars.stopTime > vars.startTime then
-        vars.keepScale = ((state.SelectedHitObjects[1] and state.SelectedHitObjects[1].StartTime or state.SongTime) -
-                             vars.startTime) / (vars.stopTime - vars.startTime)
+        vars.keepBase = ((state.SelectedHitObjects[1] and state.SelectedHitObjects[1].StartTime or state.SongTime) -
+                            vars.startTime) / (vars.stopTime - vars.startTime)
     end
     imgui.SameLine()
     imgui.SetNextItemWidth(ui.width - 64 - ui.spacing)
@@ -1590,7 +1609,7 @@ function ui_edit_teleport()
     tooltip("ui_edit_teleport_mode")
 
     imgui.SetNextItemWidth(ui.width)
-    _, vars.teleportDistance = imgui.InputFloat("##Distance", vars.teleportDistance, 1, 100)
+    _, vars.teleportDistance = imgui.InputFloat("##TeleportDistance", vars.teleportDistance, 1, 100)
     tooltip("ui_edit_teleport_distance")
 
     imgui.Separator()
@@ -1633,24 +1652,30 @@ end
 
 function teleport(t, d, m)
     local rsvs, svs = {}, {}
-    if m == 0 then
-        for _, sv in ipairs(map.ScrollVelocities) do
-            if sv.StartTime >= t and sv.StartTime < t + vars.offset then
+
+    local function process_range(start_time, end_time)
+        local start_idx = binary_search(map.ScrollVelocities, start_time, "StartTime") or 0
+        local end_idx = binary_search(map.ScrollVelocities, end_time, "StartTime") or #map.ScrollVelocities
+
+        for i = start_idx + 1, end_idx do
+            local sv = map.ScrollVelocities[i]
+            if sv.StartTime >= start_time and sv.StartTime < end_time then
                 table.insert(rsvs, sv)
             end
         end
+    end
+
+    if m == 0 then
+        process_range(t, t + vars.offset)
         table.insert(svs, utils.CreateScrollVelocity(t, (d + get_sv_distance(t, t + vars.offset)) / vars.offset))
         table.insert(svs, utils.CreateScrollVelocity(t + vars.offset, get_sv(t + vars.offset)))
     else
-        for _, sv in ipairs(map.ScrollVelocities) do
-            if sv.StartTime >= t - vars.offset and sv.StartTime < t then
-                table.insert(rsvs, sv)
-            end
-        end
+        process_range(t - vars.offset, t)
         table.insert(svs, utils.CreateScrollVelocity(t - vars.offset,
             (d + get_sv_distance(t - vars.offset, t)) / vars.offset))
         table.insert(svs, utils.CreateScrollVelocity(t, get_sv(t)))
     end
+
     return rsvs, svs
 end
 
@@ -1693,8 +1718,9 @@ end
 
 function ui_edit_vibrato()
     imgui.SetNextItemWidth(ui.width)
-    _, vars.vibDist = imgui.InputInt("Vibrato Distance", vars.vibDist, 8, 10)
+    _, vars.vibDist = imgui.InputFloat("##VibratoDistance", vars.vibDist)
     tooltip("ui_edit_vibrato_distance")
+    imgui.Text("fps: " .. math.ceil(get_bpm(vars.startTime) / 60 * vars.vibDist * 100) / 100)
 
     imgui.Separator()
 
@@ -1794,16 +1820,19 @@ function vibrato(starttime, stoptime, vibdist, vibItems)
     local lastssf = get_ssf(starttime)
     for _, time in ipairs(times) do
         local t = (lasttime - starttime) / (stoptime - starttime)
-        local svvibdistance = paramNumber(vibItems[(_ + 1) % #vibItems + 1].sv,
+        local svvibdistance = paramNumber(vibItems[(_) % #vibItems + 1].sv,
             (lasttime - starttime) / (stoptime - starttime))
-        local ssfvibdistance = paramNumber(vibItems[(_ + 1) % #vibItems + 1].ssf,
+        local ssfvibdistance = paramNumber(vibItems[(_) % #vibItems + 1].ssf,
             (lasttime - starttime) / (stoptime - starttime))
+        if (vibItems[(_) % #vibItems + 1].ssf == "") then
+            ssfvibdistance = get_ssf(time)
+        end
         if math.abs(svvibdistance) > 1 then
             local arsvs, asvs = displaceview(lasttime, time, svvibdistance)
             rsvs = join_tables(rsvs, arsvs)
             svs = join_tables(svs, asvs)
         end
-        if math.abs(ssfvibdistance - lastssf) > 0 then
+        if math.abs(ssfvibdistance - lastssf) > 2 ^ -4 then
             if #ssf == 0 then
                 table.insert(ssf, utils.CreateScrollSpeedFactor(starttime, get_ssf(starttime)))
             end
@@ -1993,15 +2022,8 @@ end
 -- =======================================
 
 function get_sv(t)
-    local s = 1
-    for _, sv in ipairs(map.ScrollVelocities) do
-        if sv.StartTime <= t then
-            s = sv.Multiplier
-        else
-            break
-        end
-    end
-    return s
+    local index = binary_search(map.ScrollVelocities, t, "StartTime")
+    return index and map.ScrollVelocities[index].Multiplier or 1
 end
 
 function get_bpm(t)
@@ -2035,34 +2057,39 @@ function get_ssf(t)
 end
 
 function get_sv_distance(t1, t2)
-    local reverse = false
     if not t2 then
         t2 = 0
     end
-    if t1 > t2 then
-        t1, t2 = t2, t1
-        reverse = true
-    end
-    local d, lt, ls = 0, t1, 1
-    for _, sv in ipairs(map.ScrollVelocities) do
-        if sv.StartTime > t2 then
-            break
-        elseif sv.StartTime > t1 then
+    if #vars.cacheSVDists == 0 then
+        local lt, d, ls = map.ScrollVelocities[1].StartTime, 0, 1
+        for _, sv in ipairs(map.ScrollVelocities) do
             d = d + (sv.StartTime - lt) * ls
             lt = sv.StartTime
             ls = sv.Multiplier
-        elseif sv.StartTime <= t1 then
-            ls = sv.Multiplier
-            lt = math.max(lt, sv.StartTime)
+            table.insert(vars.cacheSVDists, {sv.StartTime, d, sv.Multiplier})
         end
     end
-    if lt < t2 then
-        d = d + (t2 - lt) * ls
+    local d1, d2 = nil, nil
+
+    local function get_distance(t, index)
+        if index == 1 then
+            return t - vars.cacheSVDists[1][1]
+        else
+            local lt, ld, ls = unpack(vars.cacheSVDists[index])
+            return ld + (t - lt) * ls
+        end
     end
-    if reverse then
-        d = -d
+
+    local i1 = binary_search(vars.cacheSVDists, t1, 1)
+    if i1 then
+        d1 = get_distance(t1, i1)
     end
-    return d
+
+    local i2 = binary_search(vars.cacheSVDists, t2, 1)
+    if i2 then
+        d2 = get_distance(t2, i2)
+    end
+    return d2 - d1
 end
 
 function select_time(t)
@@ -2310,6 +2337,29 @@ function min(t)
     return min_v
 end
 
+function binary_search(array, value, key)
+    if #array == 0 then
+        return nil
+    end
+
+    local low = 1
+    local high = #array
+    local result = nil
+
+    while low <= high do
+        local mid = math.floor((low + high) / 2)
+        local current = key and array[mid][key] or array[mid]
+
+        if current <= value then
+            result = mid
+            low = mid + 1
+        else
+            high = mid - 1
+        end
+    end
+
+    return result
+end
 
 -- =======================================
 -- utils/ui.lua

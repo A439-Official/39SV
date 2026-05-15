@@ -4,8 +4,8 @@ function ui_edit_keep()
     tooltip("ui_edit_keep_scale")
 
     if button("Current", 64) and vars.stopTime > vars.startTime then
-        vars.keepScale = ((state.SelectedHitObjects[1] and state.SelectedHitObjects[1].StartTime or state.SongTime) -
-                             vars.startTime) / (vars.stopTime - vars.startTime)
+        vars.keepBase = ((state.SelectedHitObjects[1] and state.SelectedHitObjects[1].StartTime or state.SongTime) -
+                            vars.startTime) / (vars.stopTime - vars.startTime)
     end
     imgui.SameLine()
     imgui.SetNextItemWidth(ui.width - 64 - ui.spacing)

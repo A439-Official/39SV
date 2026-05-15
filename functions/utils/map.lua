@@ -1,13 +1,6 @@
 function get_sv(t)
-    local s = 1
-    for _, sv in ipairs(map.ScrollVelocities) do
-        if sv.StartTime <= t then
-            s = sv.Multiplier
-        else
-            break
-        end
-    end
-    return s
+    local index = binary_search(map.ScrollVelocities, t, "StartTime")
+    return index and map.ScrollVelocities[index].Multiplier or 1
 end
 
 function get_bpm(t)
@@ -41,34 +34,39 @@ function get_ssf(t)
 end
 
 function get_sv_distance(t1, t2)
-    local reverse = false
     if not t2 then
         t2 = 0
     end
-    if t1 > t2 then
-        t1, t2 = t2, t1
-        reverse = true
-    end
-    local d, lt, ls = 0, t1, 1
-    for _, sv in ipairs(map.ScrollVelocities) do
-        if sv.StartTime > t2 then
-            break
-        elseif sv.StartTime > t1 then
+    if #vars.cacheSVDists == 0 then
+        local lt, d, ls = map.ScrollVelocities[1].StartTime, 0, 1
+        for _, sv in ipairs(map.ScrollVelocities) do
             d = d + (sv.StartTime - lt) * ls
             lt = sv.StartTime
             ls = sv.Multiplier
-        elseif sv.StartTime <= t1 then
-            ls = sv.Multiplier
-            lt = math.max(lt, sv.StartTime)
+            table.insert(vars.cacheSVDists, {sv.StartTime, d, sv.Multiplier})
         end
     end
-    if lt < t2 then
-        d = d + (t2 - lt) * ls
+    local d1, d2 = nil, nil
+
+    local function get_distance(t, index)
+        if index == 1 then
+            return t - vars.cacheSVDists[1][1]
+        else
+            local lt, ld, ls = unpack(vars.cacheSVDists[index])
+            return ld + (t - lt) * ls
+        end
     end
-    if reverse then
-        d = -d
+
+    local i1 = binary_search(vars.cacheSVDists, t1, 1)
+    if i1 then
+        d1 = get_distance(t1, i1)
     end
-    return d
+
+    local i2 = binary_search(vars.cacheSVDists, t2, 1)
+    if i2 then
+        d2 = get_distance(t2, i2)
+    end
+    return d2 - d1
 end
 
 function select_time(t)

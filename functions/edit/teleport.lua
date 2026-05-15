@@ -5,7 +5,7 @@ function ui_edit_teleport()
     tooltip("ui_edit_teleport_mode")
 
     imgui.SetNextItemWidth(ui.width)
-    _, vars.teleportDistance = imgui.InputFloat("##Distance", vars.teleportDistance, 1, 100)
+    _, vars.teleportDistance = imgui.InputFloat("##TeleportDistance", vars.teleportDistance, 1, 100)
     tooltip("ui_edit_teleport_distance")
 
     imgui.Separator()
@@ -48,23 +48,29 @@ end
 
 function teleport(t, d, m)
     local rsvs, svs = {}, {}
-    if m == 0 then
-        for _, sv in ipairs(map.ScrollVelocities) do
-            if sv.StartTime >= t and sv.StartTime < t + vars.offset then
+
+    local function process_range(start_time, end_time)
+        local start_idx = binary_search(map.ScrollVelocities, start_time, "StartTime") or 0
+        local end_idx = binary_search(map.ScrollVelocities, end_time, "StartTime") or #map.ScrollVelocities
+
+        for i = start_idx + 1, end_idx do
+            local sv = map.ScrollVelocities[i]
+            if sv.StartTime >= start_time and sv.StartTime < end_time then
                 table.insert(rsvs, sv)
             end
         end
+    end
+
+    if m == 0 then
+        process_range(t, t + vars.offset)
         table.insert(svs, utils.CreateScrollVelocity(t, (d + get_sv_distance(t, t + vars.offset)) / vars.offset))
         table.insert(svs, utils.CreateScrollVelocity(t + vars.offset, get_sv(t + vars.offset)))
     else
-        for _, sv in ipairs(map.ScrollVelocities) do
-            if sv.StartTime >= t - vars.offset and sv.StartTime < t then
-                table.insert(rsvs, sv)
-            end
-        end
+        process_range(t - vars.offset, t)
         table.insert(svs, utils.CreateScrollVelocity(t - vars.offset,
             (d + get_sv_distance(t - vars.offset, t)) / vars.offset))
         table.insert(svs, utils.CreateScrollVelocity(t, get_sv(t)))
     end
+
     return rsvs, svs
 end

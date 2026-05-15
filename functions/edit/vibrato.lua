@@ -1,7 +1,8 @@
 function ui_edit_vibrato()
     imgui.SetNextItemWidth(ui.width)
-    _, vars.vibDist = imgui.InputInt("Vibrato Distance", vars.vibDist, 8, 10)
+    _, vars.vibDist = imgui.InputFloat("##VibratoDistance", vars.vibDist)
     tooltip("ui_edit_vibrato_distance")
+    imgui.Text("fps: " .. math.ceil(get_bpm(vars.startTime) / 60 * vars.vibDist * 100) / 100)
 
     imgui.Separator()
 
@@ -101,16 +102,19 @@ function vibrato(starttime, stoptime, vibdist, vibItems)
     local lastssf = get_ssf(starttime)
     for _, time in ipairs(times) do
         local t = (lasttime - starttime) / (stoptime - starttime)
-        local svvibdistance = paramNumber(vibItems[(_ + 1) % #vibItems + 1].sv,
+        local svvibdistance = paramNumber(vibItems[(_) % #vibItems + 1].sv,
             (lasttime - starttime) / (stoptime - starttime))
-        local ssfvibdistance = paramNumber(vibItems[(_ + 1) % #vibItems + 1].ssf,
+        local ssfvibdistance = paramNumber(vibItems[(_) % #vibItems + 1].ssf,
             (lasttime - starttime) / (stoptime - starttime))
+        if (vibItems[(_) % #vibItems + 1].ssf == "") then
+            ssfvibdistance = get_ssf(time)
+        end
         if math.abs(svvibdistance) > 1 then
             local arsvs, asvs = displaceview(lasttime, time, svvibdistance)
             rsvs = join_tables(rsvs, arsvs)
             svs = join_tables(svs, asvs)
         end
-        if math.abs(ssfvibdistance - lastssf) > 0 then
+        if math.abs(ssfvibdistance - lastssf) > 2 ^ -4 then
             if #ssf == 0 then
                 table.insert(ssf, utils.CreateScrollSpeedFactor(starttime, get_ssf(starttime)))
             end

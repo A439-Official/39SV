@@ -1,4 +1,5 @@
 function draw()
+
     style()
     get_vars("39SV_", vars)
     if not vars.init then
@@ -6,6 +7,8 @@ function draw()
     end
 
     ui_main()
+
+    vars.cacheSVDists = {}
 
     save_vars("39SV_", vars)
 end
