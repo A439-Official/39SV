@@ -1,9 +1,17 @@
-function ui_add_linear()
+function ui_add_shutter()
     ui_value()
+
+    imgui.SetNextItemWidth(ui.width)
+    _, vars.shutterRatio = imgui.SliderFloat("##ShutterRatio", vars.shutterRatio, 0, 1)
+    tooltip(i18n("add_shutter_ratio"))
+
+    imgui.SetNextItemWidth(ui.width)
+    _, vars.shutterSV1Speed = imgui.InputFloat("##ShutterSV1Speed", vars.shutterSV1Speed)
+    tooltip(i18n("add_shutter_sv1speed"))
 
     imgui.Separator()
 
-    if button(i18n("add_linear_apply")) then
+    if button(i18n("add_shutter_apply")) then
         if #state.SelectedHitObjects > 1 then
             local times = {}
             for _, note in ipairs(state.SelectedHitObjects) do
@@ -14,35 +22,33 @@ function ui_add_linear()
             table.sort(times)
             for i = 1, #times - 1 do
                 if vars.addSSF then
-                    add_linear_ssf(times[i], times[i + 1], vars.creatSVCount, vars.start, vars.stop,
+                    add_shutter_ssf(times[i], times[i + 1], vars.shutterRatio, vars.shutterSV1Speed,
                         i == #times - 1 and vars.finalSVMode or 0, vars.finalSV)
                 else
-                    add_linear_sv(times[i], times[i + 1], vars.creatSVCount, vars.start, vars.stop,
+                    add_shutter_sv(times[i], times[i + 1], vars.shutterRatio, vars.shutterSV1Speed,
                         i == #times - 1 and vars.finalSVMode or 0, vars.finalSV)
                 end
             end
         else
             if vars.addSSF then
-                add_linear_ssf(vars.startTime, vars.stopTime, vars.creatSVCount, vars.start, vars.stop,
+                add_shutter_ssf(vars.startTime, vars.stopTime, vars.shutterRatio, vars.shutterSV1Speed,
                     vars.finalSVMode, vars.finalSV)
             else
-                add_linear_sv(vars.startTime, vars.stopTime, vars.creatSVCount, vars.start, vars.stop, vars.finalSVMode,
+                add_shutter_sv(vars.startTime, vars.stopTime, vars.shutterRatio, vars.shutterSV1Speed, vars.finalSVMode,
                     vars.finalSV)
             end
         end
     end
 end
 
-function add_linear_sv(starttime, endtime, count, start, stop, fmode, finalSV)
+function add_shutter_sv(starttime, endtime, ratio, speed, fmode, finalSV)
     local svs = {}
     if starttime >= endtime or count == 0 then
         return {}
     end
-    for i = 0, count - 1 do
-        local t = select_time(starttime + (i / count) * (endtime - starttime))
-        local s = start + (i + 0.5) / count * (stop - start)
-        table.insert(svs, utils.CreateScrollVelocity(t, s))
-    end
+    table.insert(svs, utils.CreateScrollVelocity(starttime, speed))
+    table.insert(svs, utils.CreateScrollVelocity(starttime + (endtime - starttime) * ratio,
+        (1 - speed * ratio) / (1 - ratio)))
     if fmode > 0 then
         if fmode == 1 then
             table.insert(svs, utils.CreateScrollVelocity(endtime, get_sv(endtime)))
@@ -55,17 +61,15 @@ function add_linear_sv(starttime, endtime, count, start, stop, fmode, finalSV)
     add_sv_batch(svs)
 end
 
-function add_linear_ssf(starttime, endtime, count, start, stop, fmode, finalSV)
+function add_shutter_ssf(starttime, endtime, ratio, speed, fmode, finalSV)
     local ssfs = {}
     if starttime >= endtime or count == 0 then
         return
     end
     table.insert(ssfs, utils.CreateScrollSpeedFactor(starttime, get_ssf(starttime)))
-    for i = 0, count - 1 do
-        local t = select_time(starttime + (i / count) * (endtime - starttime))
-        local s = start + (i + 0.5) / count * (stop - start)
-        table.insert(ssfs, utils.CreateScrollSpeedFactor(t, s))
-    end
+    table.insert(ssfs, utils.CreateScrollSpeedFactor(starttime + vars.offset, speed))
+    table.insert(ssfs, utils.CreateScrollSpeedFactor(starttime + (endtime - starttime) * ratio - vars.offset,
+        (1 - speed * ratio) / (1 - ratio)))
     if fmode > 0 then
         table.insert(ssfs, utils.CreateScrollSpeedFactor(endtime, stop))
         if fmode == 1 then

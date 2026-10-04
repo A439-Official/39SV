@@ -1,32 +1,18 @@
 function ui_edit_displaceview()
     imgui.SetNextItemWidth(ui.width)
     _, vars.displaceDistance = imgui.InputInt("##DisplaceDistance", vars.displaceDistance, 1, 10)
-    tooltip("ui_edit_displace_distance")
+    tooltip(i18n("edit_displaceview_distance"))
 
     imgui.Separator()
 
-    if button("Apply") then
-        local rsvs, svs = {}, {}
-        local arsvs, asvs = displaceview(math.floor(vars.startTime), math.floor(vars.stopTime), vars.displaceDistance)
-        rsvs = join_tables(rsvs, arsvs)
-        svs = join_tables(svs, asvs)
-
-        local batchActions = {}
-        if #rsvs > 0 then
-            table.insert(batchActions, utils.CreateEditorAction(action_type.RemoveScrollVelocityBatch, rsvs))
-        end
-        if #svs > 0 then
-            table.insert(batchActions, utils.CreateEditorAction(action_type.AddScrollVelocityBatch, svs))
-        end
-        if #batchActions > 0 then
-            actions.PerformBatch(batchActions)
-        end
+    if button(i18n("edit_displaceview_apply")) then
+        displaceview(math.floor(vars.startTime), math.floor(vars.stopTime), vars.displaceDistance)
     end
 end
 
 function displaceview(starttime, stoptime, distance)
-    if stoptime - starttime < vars.offset * 2 then
-        return {}, {}
+    if math.abs(stoptime - starttime) < 1 then
+        return
     end
     local times = {}
     for _, note in ipairs(map["HitObjects"]) do
@@ -34,21 +20,18 @@ function displaceview(starttime, stoptime, distance)
             state.SelectedScrollGroupId == note.TimingGroup and not_has(times, note.StartTime) then
             table.insert(times, note.StartTime)
         end
+        if note.EndTime > starttime + vars.offset and note.EndTime < stoptime - vars.offset and
+            state.SelectedScrollGroupId == note.TimingGroup and not_has(times, note.EndTime) then
+            table.insert(times, note.EndTime)
+        end
         if note.StartTime >= stoptime - vars.offset then
             break
         end
     end
-    local rsvs = {}
-    local svs = {}
-    local arsvs, asvs = teleport(starttime, distance, 0)
-    rsvs = join_tables(rsvs, arsvs)
-    svs = join_tables(svs, asvs)
-    local arsvs, asvs = displacenote(starttime, stoptime, -distance, times)
-    rsvs = join_tables(rsvs, arsvs)
-    svs = join_tables(svs, asvs)
-    local arsvs, asvs = teleport(stoptime, -distance, 1)
-    rsvs = join_tables(rsvs, arsvs)
-    svs = join_tables(svs, asvs)
-    return rsvs, svs
+    teleport(starttime, distance, 0)
+    if (#times > 0) then
+        displacenote(-distance, times)
+    end
+    teleport(stoptime, -distance, 1)
 end
 

@@ -1,17 +1,19 @@
 function ui_edit_teleport()
 
     imgui.SetNextItemWidth(ui.width)
-    _, vars.teleportMode = imgui.Combo("##TeleportMode", vars.teleportMode, {"Below", "Above"}, 2)
-    tooltip("ui_edit_teleport_mode")
+    _, vars.teleportMode = imgui.Combo("##TeleportMode", vars.teleportMode,
+        {i18n("edit_teleport_below"), i18n("edit_teleport_above")}, 2)
+    tooltip(i18n("edit_teleport_mode"))
 
     imgui.SetNextItemWidth(ui.width)
     _, vars.teleportDistance = imgui.InputFloat("##TeleportDistance", vars.teleportDistance, 1, 100)
-    tooltip("ui_edit_teleport_distance")
+    tooltip(i18n("edit_teleport_distance"))
+
+    _, vars.teleportAccumulate = imgui.Checkbox(i18n("edit_teleport_accumulate"), vars.teleportAccumulate)
 
     imgui.Separator()
 
-    if button("Apply") then
-        local rsvs, svs = {}, {}
+    if button(i18n("edit_teleport_apply")) then
 
         if #state.SelectedHitObjects > 0 then
             local times = {}
@@ -21,56 +23,79 @@ function ui_edit_teleport()
                 end
             end
             table.sort(times)
-            for i = 1, #times do
-                local time = times[i]
-                local arsvs, asvs = teleport(time, vars.teleportDistance, vars.teleportMode)
-                rsvs = join_tables(rsvs, arsvs)
-                svs = join_tables(svs, asvs)
+            if vars.teleportAccumulate then
+                for i = 1, #times do
+                    local time = times[i]
+                    teleport(time, vars.teleportDistance * i, vars.teleportMode)
+                end
+            else
+                for i = 1, #times do
+                    local time = times[i]
+                    teleport(time, vars.teleportDistance, vars.teleportMode)
+                end
             end
         else
-            local arsvs, asvs = teleport(vars.startTime, vars.teleportDistance, vars.teleportMode)
-            rsvs = join_tables(rsvs, arsvs)
-            svs = join_tables(svs, asvs)
-        end
-
-        local batchActions = {}
-        if #rsvs > 0 then
-            table.insert(batchActions, utils.CreateEditorAction(action_type.RemoveScrollVelocityBatch, rsvs))
-        end
-        if #svs > 0 then
-            table.insert(batchActions, utils.CreateEditorAction(action_type.AddScrollVelocityBatch, svs))
-        end
-        if #batchActions > 0 then
-            actions.PerformBatch(batchActions)
+            teleport(vars.startTime, vars.teleportDistance, vars.teleportMode)
         end
     end
 end
 
 function teleport(t, d, m)
     local rsvs, svs = {}, {}
+    local all_sv = get_all_sv()
 
-    local function process_range(start_time, end_time)
-        local start_idx = binary_search(map.ScrollVelocities, start_time, "StartTime") or 0
-        local end_idx = binary_search(map.ScrollVelocities, end_time, "StartTime") or #map.ScrollVelocities
+    local window = vars.offset
+    if not vars.settings.compatibilityMode then
+        local _, exp = math.frexp(t)
+        window = math.max(vars.offset, 2 ^ (exp - 23))
+    end
 
-        for i = start_idx + 1, end_idx do
-            local sv = map.ScrollVelocities[i]
-            if sv.StartTime >= start_time and sv.StartTime < end_time then
-                table.insert(rsvs, sv)
+    local starttime, endtime
+    for _ = 1, 16 do
+        starttime = to_f32(m == 0 and t or t - window)
+        endtime = to_f32(starttime + window)
+        if endtime - starttime >= window - 1e-9 then
+            break
+        end
+        window = window * 2
+    end
+
+    local width = endtime - starttime
+    if width <= 0 then
+        return
+    end
+
+    local function find_first_ge(target)
+        local low, high = 1, #all_sv
+        local result = nil
+        while low <= high do
+            local mid = math.floor((low + high) / 2)
+            if all_sv[mid].StartTime >= target then
+                result = mid
+                high = mid - 1
+            else
+                low = mid + 1
             end
+        end
+        return result
+    end
+
+    local reset = get_sv(endtime)
+
+    local startIdx = find_first_ge(starttime)
+    if startIdx then
+        for i = startIdx, #all_sv do
+            local sv = all_sv[i]
+            if sv.StartTime > endtime then
+                break
+            end
+            table.insert(rsvs, sv)
         end
     end
 
-    if m == 0 then
-        process_range(t, t + vars.offset)
-        table.insert(svs, utils.CreateScrollVelocity(t, (d + get_sv_distance(t, t + vars.offset)) / vars.offset))
-        table.insert(svs, utils.CreateScrollVelocity(t + vars.offset, get_sv(t + vars.offset)))
-    else
-        process_range(t - vars.offset, t)
-        table.insert(svs, utils.CreateScrollVelocity(t - vars.offset,
-            (d + get_sv_distance(t - vars.offset, t)) / vars.offset))
-        table.insert(svs, utils.CreateScrollVelocity(t, get_sv(t)))
-    end
+    table.insert(svs, utils.CreateScrollVelocity(starttime, (d + get_sv_distance(starttime, endtime)) / width))
+    table.insert(svs, utils.CreateScrollVelocity(endtime, reset))
 
-    return rsvs, svs
+    remove_sv_batch(rsvs)
+    add_sv_batch(svs)
 end

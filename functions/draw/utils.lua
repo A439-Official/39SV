@@ -81,40 +81,8 @@ function drawImage(drawlist, x, y, w, h, texture, alpha)
     end
 end
 
-function drawText(drawlist, text, x, y, color, size)
+function drawBezierCubic(drawlist, p1, p2, p3, p4, color, thickness)
     color = color or rgbaToUint(255, 255, 255, 255)
-    size = size or 16
-    local scale = size / 16
-    local curX = x
-
-    for cp in string.gmatch(text, "[^|]+") do
-        local rects = fonts[cp]
-        if not rects then
-            rects = {8}
-        end
-        local charWidth = rects[1]
-        for i = 2, #rects do
-            local rect = rects[i]
-            local rx, ry, rw, rh = rect[1], rect[2], rect[3], rect[4]
-            drawRect(drawlist, curX + rx * scale, y + ry * scale, rw * scale, rh * scale, color)
-        end
-        curX = curX + charWidth * scale
-    end
-end
-
-function getTextWidth(text, size)
-    size = size or 16
-    local scale = size / 16
-    local totalWidth = 0
-
-    for cp in string.gmatch(text, "[^|]+") do
-        local rects = fonts[cp]
-        if not rects then
-            rects = {8}
-        end
-        local charWidth = rects[1]
-        totalWidth = totalWidth + charWidth * scale
-    end
-
-    return totalWidth
+    thickness = thickness or 1
+    drawlist.AddBezierCubic(p1, p2, p3, p4, color, thickness)
 end

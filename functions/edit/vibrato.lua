@@ -1,12 +1,18 @@
 function ui_edit_vibrato()
     imgui.SetNextItemWidth(ui.width)
     _, vars.vibDist = imgui.InputFloat("##VibratoDistance", vars.vibDist)
-    tooltip("ui_edit_vibrato_distance")
-    imgui.Text("fps: " .. math.ceil(get_bpm(vars.startTime) / 60 * vars.vibDist * 100) / 100)
+    tooltip(i18n("edit_vibrato_distance"))
+    local bpm = get_bpm(vars.startTime)
+    imgui.SetNextItemWidth(ui.width)
+    local _, newFPS = imgui.InputFloat("##VibratoFPS", vars.vibDist * bpm / 60)
+    if _ then
+        vars.vibDist = newFPS / bpm * 60
+    end
+    tooltip(i18n("edit_vibrato_fps"))
 
     imgui.Separator()
 
-    imgui.Text("Vibrato Items:")
+    imgui.Text(i18n("edit_vibrato_items"))
     for idx = 1, #vars.vibItems do
         local item = vars.vibItems[idx]
 
@@ -15,14 +21,14 @@ function ui_edit_vibrato()
         if _ then
             item.sv = newParam
         end
-        tooltip("ui_edit_vibrato_sv")
+        tooltip(i18n("edit_vibrato_sv"))
         imgui.SameLine()
         imgui.SetNextItemWidth((ui.width - 32 - ui.spacing * 2) / 2)
         local _, newParam = imgui.InputText("##Param_" .. idx .. "_ssf", item.ssf, 32)
         if _ then
             item.ssf = newParam
         end
-        tooltip("ui_edit_vibrato_sff")
+        tooltip(i18n("edit_vibrato_sff"))
 
         imgui.SameLine()
 
@@ -43,34 +49,17 @@ function ui_edit_vibrato()
 
     imgui.Separator()
 
-    if button("Apply Vibrato") then
-        local arsvs, asvs, assf = vibrato(math.floor(vars.startTime), math.floor(vars.stopTime), vars.vibDist,
-            vars.vibItems)
-
-        local batchActions = {}
-        if #arsvs > 0 then
-            table.insert(batchActions, utils.CreateEditorAction(action_type.RemoveScrollVelocityBatch, arsvs))
-        end
-        if #asvs > 0 then
-            table.insert(batchActions, utils.CreateEditorAction(action_type.AddScrollVelocityBatch, asvs))
-        end
-        if #assf > 0 then
-            table.insert(batchActions, utils.CreateEditorAction(action_type.AddScrollSpeedFactorBatch, assf))
-        end
-        if #batchActions > 0 then
-            actions.PerformBatch(batchActions)
-        end
+    if button(i18n("edit_vibrato_apply")) then
+        vibrato(math.floor(vars.startTime), math.floor(vars.stopTime), vars.vibDist, vars.vibItems)
     end
 end
 
 function vibrato(starttime, stoptime, vibdist, vibItems)
-    local svs = {}
-    local rsvs = {}
     local ssf = {}
 
     local times = {}
     local bpm = nil
-    for _, timepoint in ipairs(map["TimingPoints"]) do
+    for _, timepoint in ipairs(get_all_tp()) do
         if timepoint["StartTime"] <= starttime then
             bpm = timepoint
         else
@@ -78,10 +67,10 @@ function vibrato(starttime, stoptime, vibdist, vibItems)
         end
     end
     if bpm == nil then
-        if #map["TimingPoints"] > 0 then
-            bpm = map["TimingPoints"][1]
+        if #get_all_tp() > 0 then
+            bpm = get_all_tp()[1]
         else
-            bpm = utils.CreateTimingPoint(0, 100)
+            return
         end
     end
     while bpm["StartTime"] > starttime do
@@ -89,11 +78,15 @@ function vibrato(starttime, stoptime, vibdist, vibItems)
     end
 
     local time = bpm["StartTime"]
-    while time <= starttime + vars.offset do
+    local lasttime = starttime
+    while time <= starttime do
         time = time + 60000 / bpm["Bpm"] / vibdist
     end
-    while time < stoptime - vars.offset do
-        table.insert(times, select_time(time))
+    while time < stoptime do
+        if time - lasttime > 0 then
+            table.insert(times, select_time(time))
+        end
+        lasttime = time
         time = time + 60000 / bpm["Bpm"] / vibdist
     end
     table.insert(times, stoptime)
@@ -102,30 +95,30 @@ function vibrato(starttime, stoptime, vibdist, vibItems)
     local lastssf = get_ssf(starttime)
     for _, time in ipairs(times) do
         local t = (lasttime - starttime) / (stoptime - starttime)
-        local svvibdistance = paramNumber(vibItems[(_) % #vibItems + 1].sv,
-            (lasttime - starttime) / (stoptime - starttime))
-        local ssfvibdistance = paramNumber(vibItems[(_) % #vibItems + 1].ssf,
-            (lasttime - starttime) / (stoptime - starttime))
+        local svvibdistance = paramNumber(vibItems[(_) % #vibItems + 1].sv, t)
+        local ssfvibdistance = paramNumber(vibItems[(_) % #vibItems + 1].ssf, t)
         if (vibItems[(_) % #vibItems + 1].ssf == "") then
             ssfvibdistance = get_ssf(time)
         end
         if math.abs(svvibdistance) > 1 then
-            local arsvs, asvs = displaceview(lasttime, time, svvibdistance)
-            rsvs = join_tables(rsvs, arsvs)
-            svs = join_tables(svs, asvs)
+            displaceview(lasttime, time, svvibdistance)
         end
-        if math.abs(ssfvibdistance - lastssf) > 2 ^ -4 then
+        if math.abs(ssfvibdistance - lastssf) > 2 ^ -6 then
             if #ssf == 0 then
                 table.insert(ssf, utils.CreateScrollSpeedFactor(starttime, get_ssf(starttime)))
+                table.insert(ssf, utils.CreateScrollSpeedFactor(time, get_ssf(starttime)))
             end
-            table.insert(ssf, utils.CreateScrollSpeedFactor(lasttime, ssfvibdistance))
+            table.insert(ssf, utils.CreateScrollSpeedFactor(lasttime + vars.offset, ssfvibdistance))
             table.insert(ssf, utils.CreateScrollSpeedFactor(time, ssfvibdistance))
         end
         lasttime = time
         lastssf = ssfvibdistance
     end
     if #ssf > 0 then
+        table.insert(ssf, utils.CreateScrollSpeedFactor(stoptime - vars.offset, lastssf))
         table.insert(ssf, utils.CreateScrollSpeedFactor(stoptime, get_ssf(stoptime)))
     end
-    return rsvs, svs, ssf
+    if #ssf > 0 then
+        add_ssf_batch(ssf)
+    end
 end
