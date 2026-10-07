@@ -15,12 +15,7 @@ function draw()
     async_process()
 
     if not async_is_running() then
-        sync_sv_cache()
-        sync_ssf_cache()
-        sync_tp_cache()
-        clear_sv_cache()
-        clear_ssf_cache()
-        clear_tp_cache()
+        sync_map_caches()
     end
 
     if not deepcompare(settings_copy, vars.settings) then

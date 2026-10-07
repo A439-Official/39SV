@@ -41,9 +41,6 @@ function ui_edit_teleport()
 end
 
 function teleport(t, d, m)
-    local rsvs, svs = {}, {}
-    local all_sv = get_all_sv()
-
     local window = vars.offset
     if not vars.settings.compatibilityMode then
         local _, exp = math.frexp(t)
@@ -65,37 +62,5 @@ function teleport(t, d, m)
         return
     end
 
-    local function find_first_ge(target)
-        local low, high = 1, #all_sv
-        local result = nil
-        while low <= high do
-            local mid = math.floor((low + high) / 2)
-            if all_sv[mid].StartTime >= target then
-                result = mid
-                high = mid - 1
-            else
-                low = mid + 1
-            end
-        end
-        return result
-    end
-
-    local reset = get_sv(endtime)
-
-    local startIdx = find_first_ge(starttime)
-    if startIdx then
-        for i = startIdx, #all_sv do
-            local sv = all_sv[i]
-            if sv.StartTime > endtime then
-                break
-            end
-            table.insert(rsvs, sv)
-        end
-    end
-
-    table.insert(svs, utils.CreateScrollVelocity(starttime, (d + get_sv_distance(starttime, endtime)) / width))
-    table.insert(svs, utils.CreateScrollVelocity(endtime, reset))
-
-    remove_sv_batch(rsvs)
-    add_sv_batch(svs)
+    plus_sv(starttime, endtime, d / width)
 end

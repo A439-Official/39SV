@@ -55,8 +55,6 @@ function ui_edit_vibrato()
 end
 
 function vibrato(starttime, stoptime, vibdist, vibItems)
-    local ssf = {}
-
     local times = {}
     local bpm = nil
     for _, timepoint in ipairs(get_all_tp()) do
@@ -91,34 +89,26 @@ function vibrato(starttime, stoptime, vibdist, vibItems)
     end
     table.insert(times, stoptime)
 
+    local ambient = get_ssf(starttime)
+    local base = ambient
     local lasttime = starttime
-    local lastssf = get_ssf(starttime)
-    for _, time in ipairs(times) do
+    local enablessf = false
+    local mult = {}
+    for i, time in ipairs(times) do
+        local item = vibItems[i % #vibItems + 1]
         local t = (lasttime - starttime) / (stoptime - starttime)
-        local svvibdistance = paramNumber(vibItems[(_) % #vibItems + 1].sv, t)
-        local ssfvibdistance = paramNumber(vibItems[(_) % #vibItems + 1].ssf, t)
-        if (vibItems[(_) % #vibItems + 1].ssf == "") then
-            ssfvibdistance = get_ssf(time)
-        end
+        local svvibdistance = paramNumber(item.sv, t)
         if math.abs(svvibdistance) > 1 then
             displaceview(lasttime, time, svvibdistance)
         end
-        if math.abs(ssfvibdistance - lastssf) > 2 ^ -6 then
-            if #ssf == 0 then
-                table.insert(ssf, utils.CreateScrollSpeedFactor(starttime, get_ssf(starttime)))
-                table.insert(ssf, utils.CreateScrollSpeedFactor(time, get_ssf(starttime)))
+        if item.ssf ~= "" and base ~= 0 then
+            enablessf = true
+            local factor = paramNumber(item.ssf, t) / base
+            if math.abs(factor - 1) > 2 ^ -6 then
+                mult_ssf(lasttime, time, factor)
             end
-            table.insert(ssf, utils.CreateScrollSpeedFactor(lasttime + vars.offset, ssfvibdistance))
-            table.insert(ssf, utils.CreateScrollSpeedFactor(time, ssfvibdistance))
         end
         lasttime = time
-        lastssf = ssfvibdistance
     end
-    if #ssf > 0 then
-        table.insert(ssf, utils.CreateScrollSpeedFactor(stoptime - vars.offset, lastssf))
-        table.insert(ssf, utils.CreateScrollSpeedFactor(stoptime, get_ssf(stoptime)))
-    end
-    if #ssf > 0 then
-        add_ssf_batch(ssf)
-    end
+
 end

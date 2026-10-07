@@ -10,12 +10,6 @@ function get_all_sv()
     end
 end
 
-function clear_sv_cache()
-    vars.cacheSVSearch = {}
-    vars.cacheSVs = nil
-    vars.cacheSVsDirty = false
-end
-
 function get_all_ssf()
     if vars.cacheSSFs == nil then
         vars.cacheSSFs = {}
@@ -26,11 +20,6 @@ function get_all_ssf()
     else
         return vars.cacheSSFs
     end
-end
-
-function clear_ssf_cache()
-    vars.cacheSSFs = nil
-    vars.cacheSSFDirty = false
 end
 
 function add_ssf_batch(ssfs)
@@ -80,57 +69,6 @@ function remove_ssf_batch(ssfs)
     vars.cacheSSFDirty = true
 end
 
-function sync_ssf_cache()
-    if vars.cacheSSFs == nil or not vars.cacheSSFDirty then
-        return
-    end
-
-    local added = {}
-    local removed = {}
-
-    local original = {}
-    for _, ssf in ipairs(map.ScrollSpeedFactors) do
-        original[ssf.StartTime] = ssf.Multiplier
-    end
-
-    local cached = {}
-    for _, ssf in ipairs(vars.cacheSSFs) do
-        cached[ssf.StartTime] = ssf.Multiplier
-    end
-
-    for _, ssf in ipairs(map.ScrollSpeedFactors) do
-        local newMultiplier = cached[ssf.StartTime]
-        if newMultiplier == nil then
-            table.insert(removed, ssf)
-        elseif math.abs(newMultiplier - ssf.Multiplier) > 0.0001 then
-            table.insert(removed, ssf)
-            table.insert(added, utils.CreateScrollSpeedFactor(ssf.StartTime, newMultiplier))
-        end
-    end
-
-    for _, ssf in ipairs(vars.cacheSSFs) do
-        if original[ssf.StartTime] == nil then
-            table.insert(added, ssf)
-        end
-    end
-
-    local batchActions = {}
-
-    if #removed > 0 then
-        table.insert(batchActions, utils.CreateEditorAction(action_type.RemoveScrollSpeedFactorBatch, removed))
-        print("Removed " .. #removed .. " ssf")
-    end
-    if #added > 0 then
-        table.insert(batchActions, utils.CreateEditorAction(action_type.AddScrollSpeedFactorBatch, added))
-        print("Added " .. #added .. " ssf")
-    end
-    if #batchActions > 0 then
-        actions.PerformBatch(batchActions)
-    end
-
-    vars.cacheSSFDirty = false
-end
-
 function get_all_tp()
     if vars.cacheTPs == nil then
         vars.cacheTPs = {}
@@ -141,11 +79,6 @@ function get_all_tp()
     else
         return vars.cacheTPs
     end
-end
-
-function clear_tp_cache()
-    vars.cacheTPs = nil
-    vars.cacheTPsDirty = false
 end
 
 function add_tp_batch(tps)
@@ -193,57 +126,6 @@ function remove_tp_batch(tps)
 
     vars.cacheTPs = new_tps
     vars.cacheTPsDirty = true
-end
-
-function sync_tp_cache()
-    if vars.cacheTPs == nil or not vars.cacheTPsDirty then
-        return
-    end
-
-    local added = {}
-    local removed = {}
-
-    local original = {}
-    for _, tp in ipairs(map.TimingPoints) do
-        original[tp.StartTime] = tp.Bpm
-    end
-
-    local cached = {}
-    for _, tp in ipairs(vars.cacheTPs) do
-        cached[tp.StartTime] = tp.Bpm
-    end
-
-    for _, tp in ipairs(map.TimingPoints) do
-        local newBpm = cached[tp.StartTime]
-        if newBpm == nil then
-            table.insert(removed, tp)
-        elseif math.abs(newBpm - tp.Bpm) > 0.0001 then
-            table.insert(removed, tp)
-            table.insert(added, utils.CreateTimingPoint(tp.StartTime, newBpm))
-        end
-    end
-
-    for _, tp in ipairs(vars.cacheTPs) do
-        if original[tp.StartTime] == nil then
-            table.insert(added, tp)
-        end
-    end
-
-    local batchActions = {}
-
-    if #removed > 0 then
-        table.insert(batchActions, utils.CreateEditorAction(action_type.RemoveTimingPointBatch, removed))
-        print("Removed " .. #removed .. " tp")
-    end
-    if #added > 0 then
-        table.insert(batchActions, utils.CreateEditorAction(action_type.AddTimingPointBatch, added))
-        print("Added " .. #added .. " tp")
-    end
-    if #batchActions > 0 then
-        actions.PerformBatch(batchActions)
-    end
-
-    vars.cacheTPsDirty = false
 end
 
 function add_sv_batch(svs)
@@ -295,55 +177,145 @@ function remove_sv_batch(svs)
     vars.cacheSVSearch = {}
 end
 
-function sync_sv_cache()
-    if vars.cacheSVs == nil or not vars.cacheSVsDirty then
-        return
-    end
-
-    local added = {}
-    local removed = {}
-
-    local original = {}
-    for _, sv in ipairs(map.ScrollVelocities) do
-        original[sv.StartTime] = sv.Multiplier
-    end
-
-    local cached = {}
-    for _, sv in ipairs(vars.cacheSVs) do
-        cached[sv.StartTime] = sv.Multiplier
-    end
-
-    for _, sv in ipairs(map.ScrollVelocities) do
-        local newMultiplier = cached[sv.StartTime]
-        if newMultiplier == nil then
-            table.insert(removed, sv)
-        elseif math.abs(newMultiplier - sv.Multiplier) > 0.0001 then
-            table.insert(removed, sv)
-            table.insert(added, utils.CreateScrollVelocity(sv.StartTime, newMultiplier))
-        end
-    end
-
-    for _, sv in ipairs(vars.cacheSVs) do
-        if original[sv.StartTime] == nil then
-            table.insert(added, sv)
-        end
-    end
-
+-- 一次性把 SV / SSF / TP 的缓存改动同步到地图，并在最后统一清空缓存。
+-- 所有改动合并进同一个 batchActions，actions.PerformBatch 只调用一次。
+function sync_map_caches()
     local batchActions = {}
 
-    if #removed > 0 then
-        table.insert(batchActions, utils.CreateEditorAction(action_type.RemoveScrollVelocityBatch, removed))
-        print("Removed " .. #removed .. " sv")
+    -- ScrollVelocities
+    if vars.cacheSVs ~= nil and vars.cacheSVsDirty then
+        local added = {}
+        local removed = {}
+
+        local original = {}
+        for _, sv in ipairs(map.ScrollVelocities) do
+            original[sv.StartTime] = sv.Multiplier
+        end
+
+        local cached = {}
+        for _, sv in ipairs(vars.cacheSVs) do
+            cached[sv.StartTime] = sv.Multiplier
+        end
+
+        for _, sv in ipairs(map.ScrollVelocities) do
+            local newMultiplier = cached[sv.StartTime]
+            if newMultiplier == nil then
+                table.insert(removed, sv)
+            elseif math.abs(newMultiplier - sv.Multiplier) > 0.0001 then
+                table.insert(removed, sv)
+                table.insert(added, utils.CreateScrollVelocity(sv.StartTime, newMultiplier))
+            end
+        end
+
+        for _, sv in ipairs(vars.cacheSVs) do
+            if original[sv.StartTime] == nil then
+                table.insert(added, sv)
+            end
+        end
+
+        if #removed > 0 then
+            table.insert(batchActions, utils.CreateEditorAction(action_type.RemoveScrollVelocityBatch, removed))
+            print("Removed " .. #removed .. " sv")
+        end
+        if #added > 0 then
+            table.insert(batchActions, utils.CreateEditorAction(action_type.AddScrollVelocityBatch, added))
+            print("Added " .. #added .. " sv")
+        end
     end
-    if #added > 0 then
-        table.insert(batchActions, utils.CreateEditorAction(action_type.AddScrollVelocityBatch, added))
-        print("Added " .. #added .. " sv")
+
+    -- ScrollSpeedFactors
+    if vars.cacheSSFs ~= nil and vars.cacheSSFDirty then
+        local added = {}
+        local removed = {}
+
+        local original = {}
+        for _, ssf in ipairs(map.ScrollSpeedFactors) do
+            original[ssf.StartTime] = ssf.Multiplier
+        end
+
+        local cached = {}
+        for _, ssf in ipairs(vars.cacheSSFs) do
+            cached[ssf.StartTime] = ssf.Multiplier
+        end
+
+        for _, ssf in ipairs(map.ScrollSpeedFactors) do
+            local newMultiplier = cached[ssf.StartTime]
+            if newMultiplier == nil then
+                table.insert(removed, ssf)
+            elseif math.abs(newMultiplier - ssf.Multiplier) > 0.0001 then
+                table.insert(removed, ssf)
+                table.insert(added, utils.CreateScrollSpeedFactor(ssf.StartTime, newMultiplier))
+            end
+        end
+
+        for _, ssf in ipairs(vars.cacheSSFs) do
+            if original[ssf.StartTime] == nil then
+                table.insert(added, ssf)
+            end
+        end
+
+        if #removed > 0 then
+            table.insert(batchActions, utils.CreateEditorAction(action_type.RemoveScrollSpeedFactorBatch, removed))
+            print("Removed " .. #removed .. " ssf")
+        end
+        if #added > 0 then
+            table.insert(batchActions, utils.CreateEditorAction(action_type.AddScrollSpeedFactorBatch, added))
+            print("Added " .. #added .. " ssf")
+        end
     end
+
+    -- TimingPoints
+    if vars.cacheTPs ~= nil and vars.cacheTPsDirty then
+        local added = {}
+        local removed = {}
+
+        local original = {}
+        for _, tp in ipairs(map.TimingPoints) do
+            original[tp.StartTime] = tp.Bpm
+        end
+
+        local cached = {}
+        for _, tp in ipairs(vars.cacheTPs) do
+            cached[tp.StartTime] = tp.Bpm
+        end
+
+        for _, tp in ipairs(map.TimingPoints) do
+            local newBpm = cached[tp.StartTime]
+            if newBpm == nil then
+                table.insert(removed, tp)
+            elseif math.abs(newBpm - tp.Bpm) > 0.0001 then
+                table.insert(removed, tp)
+                table.insert(added, utils.CreateTimingPoint(tp.StartTime, newBpm))
+            end
+        end
+
+        for _, tp in ipairs(vars.cacheTPs) do
+            if original[tp.StartTime] == nil then
+                table.insert(added, tp)
+            end
+        end
+
+        if #removed > 0 then
+            table.insert(batchActions, utils.CreateEditorAction(action_type.RemoveTimingPointBatch, removed))
+            print("Removed " .. #removed .. " tp")
+        end
+        if #added > 0 then
+            table.insert(batchActions, utils.CreateEditorAction(action_type.AddTimingPointBatch, added))
+            print("Added " .. #added .. " tp")
+        end
+    end
+
     if #batchActions > 0 then
         actions.PerformBatch(batchActions)
     end
 
+    vars.cacheSVs = nil
+    vars.cacheSSFs = nil
+    vars.cacheTPs = nil
     vars.cacheSVsDirty = false
+    vars.cacheSSFDirty = false
+    vars.cacheTPsDirty = false
+    vars.cacheSVSearch = {}
 end
 
 function get_sv(t)
@@ -388,6 +360,180 @@ function get_ssf(t)
         end
     end
     return ssf[#ssf].Multiplier
+end
+
+function plus_sv(starttime, stoptime, delta)
+    starttime = to_f32(starttime)
+    stoptime = to_f32(stoptime)
+    if delta == 0 or stoptime <= starttime then
+        return
+    end
+    local startValue = get_sv(starttime)
+    local stopValue = get_sv(stoptime)
+    local rsvs, svs = {}, {}
+    local hasStart, hasStop = false, false
+    for _, sv in ipairs(get_all_sv()) do
+        local t = to_f32(sv.StartTime)
+        if t >= starttime and t < stoptime then
+            if t == starttime then
+                hasStart = true
+            end
+            table.insert(rsvs, sv)
+            table.insert(svs, utils.CreateScrollVelocity(t, (sv.Multiplier or 1) + delta))
+        elseif t == stoptime then
+            hasStop = true
+        end
+    end
+    if not hasStart then
+        table.insert(svs, utils.CreateScrollVelocity(starttime, startValue + delta))
+    end
+    if not hasStop then
+        table.insert(svs, utils.CreateScrollVelocity(stoptime, stopValue))
+    end
+    if #rsvs > 0 then
+        remove_sv_batch(rsvs)
+    end
+    if #svs > 0 then
+        add_sv_batch(svs)
+    end
+end
+
+function plus_ssf(starttime, stoptime, delta)
+    starttime = to_f32(starttime)
+    stoptime = to_f32(stoptime)
+    if delta == 0 or stoptime <= starttime then
+        return
+    end
+    local function window_at(t)
+        if vars.settings.compatibilityMode then
+            return vars.offset
+        end
+        local _, exp = math.frexp(t)
+        return math.max(vars.offset, 2 ^ (exp - 23))
+    end
+    local innerStart = to_f32(starttime + window_at(starttime))
+    local innerStop = to_f32(stoptime - window_at(stoptime))
+    if innerStop <= innerStart then
+        return
+    end
+    local rssfs, ssfs = {}, {}
+    local startPointValue, stopPointValue
+    for _, ssf in ipairs(get_all_ssf()) do
+        local t = to_f32(ssf.StartTime)
+        if t == starttime then
+            startPointValue = ssf.Multiplier
+        end
+        if t == stoptime then
+            stopPointValue = ssf.Multiplier
+        end
+        if t >= starttime and t <= stoptime then
+            table.insert(rssfs, ssf)
+            if t > starttime and t < stoptime then
+                table.insert(ssfs, utils.CreateScrollSpeedFactor(t, (ssf.Multiplier or 1) + delta))
+            end
+        end
+    end
+    local outerStartValue = startPointValue or get_ssf(starttime)
+    local outerStopValue = stopPointValue or get_ssf(stoptime)
+    local innerStartValue = get_ssf(innerStart) + delta
+    local innerStopValue = get_ssf(innerStop) + delta
+    table.insert(ssfs, utils.CreateScrollSpeedFactor(starttime, outerStartValue))
+    table.insert(ssfs, utils.CreateScrollSpeedFactor(innerStart, innerStartValue))
+    table.insert(ssfs, utils.CreateScrollSpeedFactor(innerStop, innerStopValue))
+    table.insert(ssfs, utils.CreateScrollSpeedFactor(stoptime, outerStopValue))
+    if #rssfs > 0 then
+        remove_ssf_batch(rssfs)
+    end
+    if #ssfs > 0 then
+        add_ssf_batch(ssfs)
+    end
+end
+
+function mult_sv(starttime, stoptime, factor)
+    starttime = to_f32(starttime)
+    stoptime = to_f32(stoptime)
+    if factor == 1 or stoptime <= starttime then
+        return
+    end
+    local startValue = get_sv(starttime)
+    local stopValue = get_sv(stoptime)
+    local rsvs, svs = {}, {}
+    local hasStart, hasStop = false, false
+    for _, sv in ipairs(get_all_sv()) do
+        local t = to_f32(sv.StartTime)
+        if t >= starttime and t < stoptime then
+            if t == starttime then
+                hasStart = true
+            end
+            table.insert(rsvs, sv)
+            table.insert(svs, utils.CreateScrollVelocity(t, (sv.Multiplier or 1) * factor))
+        elseif t == stoptime then
+            hasStop = true
+        end
+    end
+    if not hasStart then
+        table.insert(svs, utils.CreateScrollVelocity(starttime, startValue * factor))
+    end
+    if not hasStop then
+        table.insert(svs, utils.CreateScrollVelocity(stoptime, stopValue))
+    end
+    if #rsvs > 0 then
+        remove_sv_batch(rsvs)
+    end
+    if #svs > 0 then
+        add_sv_batch(svs)
+    end
+end
+
+function mult_ssf(starttime, stoptime, factor)
+    starttime = to_f32(starttime)
+    stoptime = to_f32(stoptime)
+    if factor == 1 or stoptime <= starttime then
+        return
+    end
+    local function window_at(t)
+        if vars.settings.compatibilityMode then
+            return vars.offset
+        end
+        local _, exp = math.frexp(t)
+        return math.max(vars.offset, 2 ^ (exp - 23))
+    end
+    local innerStart = to_f32(starttime + window_at(starttime))
+    local innerStop = to_f32(stoptime - window_at(stoptime))
+    if innerStop <= innerStart then
+        return
+    end
+    local rssfs, ssfs = {}, {}
+    local startPointValue, stopPointValue
+    for _, ssf in ipairs(get_all_ssf()) do
+        local t = to_f32(ssf.StartTime)
+        if t == starttime then
+            startPointValue = ssf.Multiplier
+        end
+        if t == stoptime then
+            stopPointValue = ssf.Multiplier
+        end
+        if t >= starttime and t <= stoptime then
+            table.insert(rssfs, ssf)
+            if t > starttime and t < stoptime then
+                table.insert(ssfs, utils.CreateScrollSpeedFactor(t, (ssf.Multiplier or 1) * factor))
+            end
+        end
+    end
+    local outerStartValue = startPointValue or get_ssf(starttime)
+    local outerStopValue = stopPointValue or get_ssf(stoptime)
+    local innerStartValue = get_ssf(innerStart) * factor
+    local innerStopValue = get_ssf(innerStop) * factor
+    table.insert(ssfs, utils.CreateScrollSpeedFactor(starttime, outerStartValue))
+    table.insert(ssfs, utils.CreateScrollSpeedFactor(innerStart, innerStartValue))
+    table.insert(ssfs, utils.CreateScrollSpeedFactor(innerStop, innerStopValue))
+    table.insert(ssfs, utils.CreateScrollSpeedFactor(stoptime, outerStopValue))
+    if #rssfs > 0 then
+        remove_ssf_batch(rssfs)
+    end
+    if #ssfs > 0 then
+        add_ssf_batch(ssfs)
+    end
 end
 
 function get_sv_distance(t1, t2)
